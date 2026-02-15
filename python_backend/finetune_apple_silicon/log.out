@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/Users/dikiferdianto/Voice-Changer/voice-changer/python_backend/finetune_apple_silicon/xtts_demo_with_model_compression.py", line 244, in <module>
+    demo.load(read_logs, None, logs, every=1)
+TypeError: EventListener._setup.<locals>.event_trigger() got an unexpected keyword argument 'every'
+2026-02-14 07:00:48,101 [INFO] HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"

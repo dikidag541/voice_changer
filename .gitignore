@@ -1,0 +1,39 @@
+# Python stuff
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# AI Models & Large Files (Root & Subdir)
+**/finetune/output/
+**/finetune/datasets/
+**/GPT-SoVITS/
+**/models/
+**/tts_models/
+**/venv/
+**/model_text/
+**/*.pth
+**/*.safetensors
+**/*.bin
+**/*.onnx
+**/*.log
+
+# Temporary Audio Files (Root & Subdir)
+temp_audio/
+generated_audio/
+python_backend/temp_audio/
+python_backend/generated_audio/
+public/storage/references/
+public/storage/generated/
+
+# Laravel stuff
+/vendor
+/node_modules
+/public/storage
+/storage/*.key
+.env
+.env.backup
+.env.production
+composer.lock
+package-lock.json
