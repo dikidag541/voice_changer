@@ -64,13 +64,29 @@ class XTTSGenerator:
             if os.path.exists(checkpoint_path):
                 self.model.load_checkpoint(checkpoint_dir=local_model_dir, use_deepspeed=False)
 
-        # 2. Inference
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_out:
-            # Gunakan speaker referensi yang diupload
-            # (Note: Logic upload speaker wav ke S3 perlu di Laravel)
-            
-            # Dummy generation logic (gunakan logic dari app.py Anda sebelumnya)
-            # self.model.inference(text, "pt", ...)
-            pass
+        # 2. Persiapkan Speaker Reference (Jika path S3 diberikan)
+        local_speaker_path = "/root/models/default_speaker.wav" 
+        if speaker_wav_path:
+            s3 = S3Manager()
+            local_speaker_path = f"/tmp/{os.path.basename(speaker_wav_path)}"
+            s3.s3.download_file(s3.bucket, speaker_wav_path, local_speaker_path)
 
-        return "audio_data_binary"
+        # 3. Inference
+        print(f"🎙️ Generating voice for: {text[:50]}...")
+        outputs = self.model.synthesize(
+            text,
+            config=self.model.config,
+            speaker_wav=local_speaker_path,
+            language="id", # Set default ke Indonesia
+            speed=speed
+        )
+        
+        # Return binary audio data
+        import io
+        import soundfile as sf
+        
+        byte_io = io.BytesIO()
+        sf.write(byte_io, outputs['wav'], 24000, format='WAV')
+        byte_io.seek(0)
+        
+        return byte_io.read()

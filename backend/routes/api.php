@@ -8,13 +8,13 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::post('/initialize-voice', [VoiceChangerController::class, 'initializeVoice']);
-Route::post('/clone-voice', [VoiceChangerController::class, 'clone']);
-Route::post('/start-training', [VoiceChangerController::class, 'startTraining']);
-Route::get('/engine-status', [VoiceChangerController::class, 'engineStatus']);
-
-// New SaaS Routes
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/initialize-voice', [VoiceChangerController::class, 'initializeVoice']);
+    Route::post('/clone-voice', [VoiceChangerController::class, 'clone']);
+    Route::post('/start-training', [VoiceChangerController::class, 'startTraining']);
+    Route::get('/engine-status', [VoiceChangerController::class, 'engineStatus']);
+    
+    // Original SaaS Routes
     Route::post('/train', [\App\Http\Controllers\VoiceTrainingController::class, 'store']);
     Route::post('/generate', [\App\Http\Controllers\VoiceGenerateController::class, 'generate']);
 });

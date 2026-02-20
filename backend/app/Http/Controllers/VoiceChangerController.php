@@ -17,11 +17,11 @@ class VoiceChangerController extends Controller
     public function initializeVoice(Request $request)
     {
         $request->validate([
-            'audio' => 'required|file|max:35000',
+            'audio' => 'required|file|mimes:wav,mp3,m4a|max:35000',
         ]);
 
         $audio = $request->file('audio');
-        $baseUrl = env('AI_XTTS_URL', 'http://localhost:5000');
+        $baseUrl = env('AI_GENERATE_URL', 'http://localhost:5000');
 
         try {
             $response = Http::timeout(60)->attach(
@@ -55,7 +55,7 @@ class VoiceChangerController extends Controller
         $request->validate([
             'text' => 'required|string|max:500',
             'speaker_id' => 'nullable|string', // ID dari Step 1
-            'audio' => 'nullable|file|max:35000', // Support fallback upload langsung
+            'audio' => 'nullable|file|mimes:wav,mp3,m4a|max:35000', // Support fallback upload langsung
             'speed' => 'nullable|numeric|min:0.5|max:2.0',
         ]);
 
@@ -68,13 +68,13 @@ class VoiceChangerController extends Controller
         $generationId = DB::table('voice_generations')->insertGetId([
             'user_id' => $userId,
             'input_text' => $text,
-            'reference_audio_path' => $request->hasFile('audio') ? $request->file('audio')->store('references', 'public') : 'using_cached_speaker',
+            'reference_audio_path' => $request->hasFile('audio') ? $request->file('audio')->store('references', 's3') : 'using_cached_speaker',
             'status' => 'processing',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        $baseUrl = env('AI_XTTS_URL', 'http://localhost:5000');
+        $baseUrl = env('AI_GENERATE_URL', 'http://localhost:5000');
 
         try {
             $postData = [
@@ -97,7 +97,7 @@ class VoiceChangerController extends Controller
 
             if ($response->successful() && strlen($response->body()) > 0) {
                 $filename = 'generated/' . uniqid() . '.wav';
-                Storage::disk('public')->put($filename, $response->body());
+                Storage::disk('s3')->put($filename, $response->body());
 
                 // Update status sukses
                 DB::table('voice_generations')->where('id', $generationId)->update([
@@ -107,7 +107,7 @@ class VoiceChangerController extends Controller
                 ]);
 
                 // Return both binary audio and persistent URL
-                $fileUrl = asset('storage/' . $filename);
+                $fileUrl = Storage::disk('s3')->url($filename);
 
                 return response($response->body(), 200)
                     ->header('Content-Type', 'audio/wav')
@@ -152,7 +152,7 @@ class VoiceChangerController extends Controller
     {
         $engines = [
             'xtts' => [
-                'url' => env('AI_XTTS_URL', 'http://127.0.0.1:5000'),
+                'url' => env('AI_GENERATE_URL', 'http://127.0.0.1:5000'),
                 'name' => 'XTTS v2',
                 'quality' => 'Optimization: Indonesian'
             ]

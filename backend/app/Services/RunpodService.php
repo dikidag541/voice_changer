@@ -41,4 +41,16 @@ class RunpodService
             'message' => 'Training triggered on Runpod Cloud.'
         ];
     }
+
+    /**
+     * Alias for train method to match controller call
+     */
+    public function startTraining($userId, $localPath)
+    {
+        return $this->train([
+            'user_id' => $userId,
+            'audio_path' => $localPath,
+            'model_name' => 'voice_' . $userId . '_' . time()
+        ]);
+    }
 }

@@ -49,7 +49,7 @@
                     <span class="text-indigo-500">02.</span> Hak Kekayaan Intelektual
                 </h2>
                 <p class="text-gray-400">
-                    Program ini mengintegrasikan teknologi open-source (GPT-SoVITS) di bawah lisensi MIT. Pengembang memberikan hak penggunaan kepada klien, namun membebaskan diri dari tanggung jawab hukum jika klien menyalahgunakan output suara yang dihasilkan oleh sistem.
+                    Program ini mengintegrasikan teknologi open-source (XTTS v2) di bawah lisensi CPML. Pengembang memberikan hak penggunaan kepada klien, namun membebaskan diri dari tanggung jawab hukum jika klien menyalahgunakan output suara yang dihasilkan oleh sistem.
                 </p>
             </section>
 
