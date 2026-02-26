@@ -5,7 +5,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def transcribe_with_whisper(wavs_dir="wavs", metadata_path="metadata.csv", whisper_model="large-v3"):
+def transcribe_with_whisper(wavs_dir="wavs", metadata_path="metadata.csv", whisper_model="medium"):
     """
     Auto transcribe audio files menggunakan OpenAI Whisper.
     Jauh lebih akurat untuk Bahasa Indonesia dibanding Google SR (~95%+ vs 70-80%).

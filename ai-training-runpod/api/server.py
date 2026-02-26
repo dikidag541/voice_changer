@@ -116,7 +116,7 @@ def run_training_pipeline(request: TrainingRequest):
             "message": "Transcribing audio with Whisper..."
         })
         metadata_path = os.path.join(base_work_dir, "metadata.csv")
-        transcribe_with_whisper(wavs_dir=wavs_dir, metadata_path=metadata_path, whisper_model="large-v3")
+        transcribe_with_whisper(wavs_dir=wavs_dir, metadata_path=metadata_path, whisper_model="medium")
 
         # 4. TRAINING
         training_progress.update({
@@ -159,7 +159,7 @@ def run_training_pipeline(request: TrainingRequest):
             "message": f"Error: {str(e)}"
         })
         print(f"❌ [PIPELINE] ERROR: {str(e)}")
-        terminate_self()
+        # terminate_self() # Dinonaktifkan sementara agar log tidak hilang kalau error
 
 
 @app.post("/train")

@@ -56,29 +56,45 @@ class RunpodService
         foreach ($gpus as $gpu) {
             Log::info("Mencoba menyewa GPU: $gpu...");
 
+            $vars = [
+                'gpuTypeId' => $gpu,
+                'name' => $name,
+                'awsId' => env('AWS_ACCESS_KEY_ID', ''),
+                'awsSecret' => env('AWS_SECRET_ACCESS_KEY', ''),
+                'awsRegion' => env('AWS_DEFAULT_REGION', 'auto'),
+                'awsBucket' => env('AWS_BUCKET', ''),
+                'awsEndpoint' => env('AWS_ENDPOINT', ''),
+                'awsUrl' => env('AWS_URL', ''),
+                'runpodKey' => env('RUNPOD_API_KEY', ''),
+                'dockerArgs' => "bash -c 'set -e && echo \"[1/4] Installing system dependencies (ffmpeg, espeak, etc)...\" && apt-get update && apt-get install -y ffmpeg git git-lfs espeak-ng build-essential g++ && echo \"[2/4] Cloning codebase from GitHub...\" && (if [ ! -d \"/workspace/voice-changer\" ]; then cd /workspace && git clone --depth 1 -b diki https://github.com/dikidag541/voice_changer voice-changer; else cd /workspace/voice-changer && git pull origin diki; fi) && echo \"[3/4] Installing AI libraries (This takes 5-10 minutes)...\" && cd /workspace/voice-changer/ai-training-runpod && pip install -r requirements.txt && echo \"[4/4] Starting training server...\" && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888'"
+            ];
+
+            // json_encode setiap nilai agar aman dimasukkan ke dalam query string GraphQL
+            $e = array_map(fn($v) => json_encode($v), $vars);
+
             $query = '
                 mutation {
                   podFindAndDeployOnDemand(
                     input: {
                       cloudType: COMMUNITY,
                       gpuCount: 1,
-                      gpuTypeId: "' . $gpu . '",
+                      gpuTypeId: ' . $e['gpuTypeId'] . ',
                       imageName: "runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04",
                       containerDiskInGb: 30,
                       volumeInGb: 50,
                       volumeMountPath: "/workspace",
                       ports: "8888/http",
-                      name: "' . $name . '",
+                      name: ' . $e['name'] . ',
                       env: [
-                        { key: "AWS_ACCESS_KEY_ID", value: "' . env('AWS_ACCESS_KEY_ID') . '" },
-                        { key: "AWS_SECRET_ACCESS_KEY", value: "' . env('AWS_SECRET_ACCESS_KEY') . '" },
-                        { key: "AWS_DEFAULT_REGION", value: "' . env('AWS_DEFAULT_REGION', 'auto') . '" },
-                        { key: "AWS_BUCKET", value: "' . env('AWS_BUCKET') . '" },
-                        { key: "AWS_ENDPOINT", value: "' . env('AWS_ENDPOINT') . '" },
-                        { key: "AWS_URL", value: "' . env('AWS_URL') . '" },
-                        { key: "RUNPOD_API_KEY", value: "' . env('RUNPOD_API_KEY') . '" }
+                        { key: "AWS_ACCESS_KEY_ID", value: ' . $e['awsId'] . ' },
+                        { key: "AWS_SECRET_ACCESS_KEY", value: ' . $e['awsSecret'] . ' },
+                        { key: "AWS_DEFAULT_REGION", value: ' . $e['awsRegion'] . ' },
+                        { key: "AWS_BUCKET", value: ' . $e['awsBucket'] . ' },
+                        { key: "AWS_ENDPOINT", value: ' . $e['awsEndpoint'] . ' },
+                        { key: "AWS_URL", value: ' . $e['awsUrl'] . ' },
+                        { key: "RUNPOD_API_KEY", value: ' . $e['runpodKey'] . ' }
                       ],
-                      dockerArgs: "bash -c \'set -e && echo \\\"[1/4] Installing system dependencies (ffmpeg, espeak, etc)...\\\" && apt-get update && apt-get install -y ffmpeg git git-lfs espeak-ng build-essential g++ && echo \\\"[2/4] Cloning codebase from GitHub...\\\" && (if [ ! -d \\\"/workspace/voice-changer\\\" ]; then cd /workspace && git clone --depth 1 -b diki https://github.com/dikidag541/voice_changer voice-changer; else cd /workspace/voice-changer && git pull origin diki; fi) && echo \\\"[3/4] Installing AI libraries (This takes 5-10 minutes)...\\\" && cd /workspace/voice-changer/ai-training-runpod && pip install --no-cache-dir --ignore-installed -r requirements.txt && echo \\\"[4/4] Starting training server...\\\" && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888\'"
+                      dockerArgs: ' . $e['dockerArgs'] . '
                     }
                   ) {
                     id
