@@ -142,10 +142,7 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     config.optimizer = "AdamW"
     config.optimizer_params = {"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2}
 
-    training_args = TrainerArgs(
-        output_path=output_path,
-        dashboard_logger="tensorboard"
-    )
+    training_args = TrainerArgs()
 
     # Dataset config
     config.languages = ["id"] # Target language
