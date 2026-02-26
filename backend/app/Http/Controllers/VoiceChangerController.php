@@ -169,6 +169,9 @@ class VoiceChangerController extends Controller
 
             // 1. CARI & VALIDASI FILE
             $audioFile = $request->file('audio') ?? $request->file('file');
+            $modelName = $request->input('model_name', 'Premium_Voice');
+            $epochs    = $request->input('epochs', 30);
+            
             $localPath = null;
             $filename = null;
 
@@ -206,7 +209,8 @@ class VoiceChangerController extends Controller
             Cache::put("pod_training_{$podResponse['id']}", [
                 'audio_path' => $cloudPath,
                 'user_id' => 'guest_admin',
-                'epochs' => 100
+                'model_name' => $modelName,
+                'epochs' => (int)$epochs
             ], now()->addHour());
 
             return response()->json([
@@ -246,7 +250,7 @@ class VoiceChangerController extends Controller
                     'user_id' => $data['user_id'],
                     'audio_path' => $data['audio_path'],
                     'epochs' => $data['epochs'],
-                    'model_name' => 'premium_voice'
+                    'model_name' => $data['model_name'] ?? 'premium_voice'
                 ], $podId); // Pass podId to use dynamic URL
 
                 // Beri respon 'starting' agar UI tahu ini sedang diproses

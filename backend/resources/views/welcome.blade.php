@@ -189,6 +189,20 @@
                     <p class="text-xs text-indigo-300/70 mb-6 font-medium leading-relaxed italic">
                         Untuk hasil natural, gunakan file <span class="text-white font-bold underline">suara-30menit.wav</span> sebagai dataset premium.
                     </p>
+                    
+                    <div class="space-y-4 mb-6">
+                        <div>
+                            <label class="text-[10px] font-black uppercase tracking-widest text-slate-500 block mb-2">Nama Model AI</label>
+                            <input type="text" id="trainModelName" placeholder="Contoh: Suara_Diki_Premium" 
+                                class="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black uppercase tracking-widest text-slate-500 block mb-2">Jumlah Epochs (Training Iteration)</label>
+                            <input type="number" id="trainEpochs" value="30" min="1" max="500"
+                                class="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all">
+                        </div>
+                    </div>
+
                     <button id="startTrainBtn" class="w-full bg-indigo-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-500/20 active:scale-95 transition-all text-sm uppercase tracking-widest">
                         Fine-Tuning (30 MIN)
                     </button>
@@ -443,10 +457,15 @@
                 btn.disabled = true;
                 statusDiv.classList.remove('hidden');
 
+                const modelName = document.getElementById('trainModelName').value;
+                const epochs = document.getElementById('trainEpochs').value;
+
                 const formData = new FormData();
                 if (finalWavBlob) {
                     formData.append('audio', finalWavBlob);
                 }
+                formData.append('model_name', modelName || 'Premium_Voice');
+                formData.append('epochs', epochs || 30);
 
                 try {
                     const response = await fetch('/api/start-training', {
