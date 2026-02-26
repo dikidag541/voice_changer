@@ -107,30 +107,43 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     config.epochs = epochs
     config.batch_size = auto_batch
     config.grad_acumm_steps = auto_grad_accum # Typo 'mm' adalah standar Coqui
-    config.mixed_precision = False  # Lebih stabil di berbagai GPU
+    config.mixed_precision = False
     config.output_path = output_path
+    config.eval_split_size = 0.1
     
-    # Step settings (Pindah ke Config)
-    config.save_step = 500
+    # Model Args (Penting untuk XTTS)
+    if not hasattr(config, "model_args"):
+        from TTS.tts.models.xtts import XttsArgs
+        config.model_args = XttsArgs()
+    
+    config.model_args.gpt_batch_size = auto_batch
+    config.model_args.gpt_max_audio_length = 255995
+    config.model_args.gpt_max_text_length = 200
+    
+    # Step settings
+    config.save_step = 250
     config.print_step = 50
     config.plot_step = 100
     config.save_n_checkpoints = 2
-    config.save_best_after = 500
+    config.save_best_after = 250
     
     # Optimizer & LR
     config.lr = 5e-6
     config.optimizer = "AdamW"
     config.optimizer_params = {"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2}
 
-    training_args = TrainerArgs() # KOSONGKAN TOTAL biar gak protes lagi
+    training_args = TrainerArgs(
+        output_path=output_path,
+        dashboard_logger="tensorboard"
+    )
 
     # Dataset config
-    config.languages = ["id"]
+    config.languages = ["id"] # Target language
     dataset_config = BaseDatasetConfig(
         formatter="ljspeech",
         meta_file_train="metadata.csv",
         path=dataset_path,
-        language="id"
+        language="en" # Proxy language untuk tokenizer stability
     )
     config.datasets = [dataset_config]
 
@@ -151,6 +164,7 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     
     if hasattr(model, "tokenizer"):
         if not hasattr(model.tokenizer, "text_to_ids"):
+            # Pakai 'en' untuk tokenizer Latin characters
             model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
         if not hasattr(model.tokenizer, "print_logs"):
             model.tokenizer.print_logs = lambda x: None
@@ -180,8 +194,10 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
         trainer.fit()
         print("\n✅ TRAINING SELESAI!")
         return True
-    except Exception as e:
-        print(f"\n❌ Error during training: {str(e)}")
+    except BaseException as e:
+        print(f"\n❌ Error during training (BaseException): {str(e)}")
+        if isinstance(e, SystemExit):
+            print("   ⚠️ Trainer executed sys.exit(). Cek log di atas untuk detail errornya.")
         import traceback
         traceback.print_exc()
         return False
