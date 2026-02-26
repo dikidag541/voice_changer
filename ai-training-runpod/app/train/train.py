@@ -119,7 +119,27 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     model.load_checkpoint(config, checkpoint_dir=model_dir, eval=False, use_deepspeed=False)
     model.to(device)
 
-    # 6. TRAINER
+    # 6. COMPATIBILITY PATCHES (Sangat Penting!)
+    if not hasattr(model, "get_criterion"):
+        model.get_criterion = lambda: torch.nn.L1Loss()
+    
+    # Patch tokenizer (Paling sering bikin SystemExit)
+    if hasattr(model, "tokenizer"):
+        if not hasattr(model.tokenizer, "text_to_ids"):
+            model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
+        if not hasattr(model.tokenizer, "print_logs"):
+            model.tokenizer.print_logs = lambda x: None
+
+    # Patch Speaker/Language managers
+    for manager_name in ["speaker_manager", "language_manager"]:
+        manager = getattr(model, manager_name, None)
+        if manager is not None:
+            if not hasattr(manager, "save_ids_to_file"):
+                manager.save_ids_to_file = lambda x: None
+            if not hasattr(manager, "get_id_by_name"):
+                manager.get_id_by_name = lambda x: 0
+
+    # 7. TRAINER
     print(f"🚀 Starting training (Proxy Lang: EN)...")
     training_args = TrainerArgs() # Kosongkan total
 
