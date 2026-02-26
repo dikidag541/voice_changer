@@ -114,17 +114,15 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     config.save_step = 500
     config.print_step = 50
     config.plot_step = 100
+    config.save_n_checkpoints = 2
+    config.save_best_after = 500
     
     # Optimizer & LR
     config.lr = 5e-6
     config.optimizer = "AdamW"
     config.optimizer_params = {"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2}
 
-    training_args = TrainerArgs(
-        # TrainerArgs sekarang sangat minimal di versi terbaru
-        save_n_checkpoints=2,
-        save_best_after=500,
-    )
+    training_args = TrainerArgs() # KOSONGKAN TOTAL biar gak protes lagi
 
     # Dataset config
     config.languages = ["id"]
