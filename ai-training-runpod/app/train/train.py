@@ -100,8 +100,6 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     print(f"✅ Dataset cleaned: {len(cleaned_lines)} samples ready.")
 
     # ── 5. OPTIMASI TRAINING (Pindahkan ke Config) ─────────────────────────
-    # PENTING: Untuk dataset sangat kecil (seperti 6 sample), 
-    # jangan pakai grad_accum > 1 karena dia bakal nunggu data yang gak ada.
     num_samples = len(cleaned_lines)
     
     if num_samples < 10:
@@ -112,45 +110,47 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     else:
         auto_batch = batch_size if vram > 16 else (2 if vram > 8 else 1)
         auto_grad_accum = 1 if vram > 16 else (4 if vram > 8 else 8)
-        eval_split = 0.1
+        eval_split = 0.05
 
+    # Dasar-dasar Config
     config.epochs = epochs
     config.batch_size = auto_batch
-    config.grad_acumm_steps = auto_grad_accum # Typo 'mm' adalah standar Coqui
+    config.grad_acumm_steps = auto_grad_accum
     config.mixed_precision = False
     config.output_path = output_path
     config.eval_split_size = eval_split
     
-    # Model Args (Penting untuk XTTS)
-    if not hasattr(config, "model_args"):
-        from TTS.tts.models.xtts import XttsArgs
-        config.model_args = XttsArgs()
+    # Model Args (HANYA update, jangan overwrite total)
+    if hasattr(config, "model_args"):
+        config.model_args.gpt_batch_size = auto_batch
+        config.model_args.gpt_max_audio_length = 255995
+        config.model_args.gpt_max_text_length = 200
     
-    config.model_args.gpt_batch_size = auto_batch
-    config.model_args.gpt_max_audio_length = 255995
-    config.model_args.gpt_max_text_length = 200
-    
-    # Step settings
-    config.save_step = 250
-    config.print_step = 50
+    # Step/Log settings
+    config.save_step = 500
+    config.print_step = 10
     config.plot_step = 100
-    config.save_n_checkpoints = 2
-    config.save_best_after = 250
+    config.save_n_checkpoints = 1
+    config.save_best_after = 500
     
-    # Optimizer & LR
+    # Optimizer
     config.lr = 5e-6
     config.optimizer = "AdamW"
     config.optimizer_params = {"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2}
 
-    training_args = TrainerArgs()
+    training_args = TrainerArgs(
+        output_path=output_path,
+        dashboard_logger=None, # Nonaktifkan logger untuk stabilitas
+        project_name="xtts_fine_tuning"
+    )
 
     # Dataset config
-    config.languages = ["id"] # Target language
+    config.languages = ["id"] 
     dataset_config = BaseDatasetConfig(
         formatter="ljspeech",
         meta_file_train="metadata.csv",
         path=dataset_path,
-        language="en" # Proxy language untuk tokenizer stability
+        language="en" # Proxy latin
     )
     config.datasets = [dataset_config]
 
@@ -169,9 +169,10 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     if not hasattr(model, "get_criterion"):
         model.get_criterion = lambda: torch.nn.L1Loss()
     
+    # Patch tokenizer (Paling sering bikin SystemExit)
     if hasattr(model, "tokenizer"):
         if not hasattr(model.tokenizer, "text_to_ids"):
-            # Pakai 'en' untuk tokenizer Latin characters
+            # Pakai 'en' untuk Latin tokenizer characters
             model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
         if not hasattr(model.tokenizer, "print_logs"):
             model.tokenizer.print_logs = lambda x: None
@@ -179,32 +180,33 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     # Patch Speaker/Language managers
     for manager_name in ["speaker_manager", "language_manager"]:
         manager = getattr(model, manager_name, None)
-        if manager is not None and not hasattr(manager, "save_ids_to_file"):
-            manager.save_ids_to_file = lambda x: None
+        if manager is not None:
+            if not hasattr(manager, "save_ids_to_file"):
+                manager.save_ids_to_file = lambda x: None
+            if not hasattr(manager, "get_id_by_name"):
+                # Return ID 0 atau default
+                manager.get_id_by_name = lambda x: 0
 
     # ── 8. START TRAINING ────────────────────────────────────────────────────
     print(f"\n🚀 Starting training...")
-    print(f"   Epochs: {epochs} | Batch Size: {auto_batch} | Grad Accum: {auto_grad_accum}")
-    print(f"   Output Path: {output_path}")
+    print(f"   Epochs: {epochs} | Batch Size: {auto_batch}")
+    print(f"   Samples: {num_samples} | Eval Split: {eval_split}")
     print("=" * 60)
 
-    trainer = Trainer(
-        training_args,
-        config,
-        output_path=output_path,
-        model=model,
-        train_samples=None,
-        eval_samples=None
-    )
-
     try:
+        trainer = Trainer(
+            training_args,
+            config,
+            output_path=output_path,
+            model=model,
+            train_samples=None,
+            eval_samples=None
+        )
         trainer.fit()
         print("\n✅ TRAINING SELESAI!")
         return True
-    except BaseException as e:
-        print(f"\n❌ Error during training (BaseException): {str(e)}")
-        if isinstance(e, SystemExit):
-            print("   ⚠️ Trainer executed sys.exit(). Cek log di atas untuk detail errornya.")
+    except (Exception, SystemExit) as e:
+        print(f"\n❌ Error during training: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
