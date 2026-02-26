@@ -114,7 +114,15 @@ def run_training_pipeline(request: TrainingRequest):
             print(f"📦 [PIPELINE] Extracting ZIP: {local_raw_file}")
             with zipfile.ZipFile(local_raw_file, 'r') as zip_ref:
                 zip_ref.extractall(wavs_dir)
-            print(f"✅ [PIPELINE] Extraction complete.")
+            
+            # FLATTEN: Pindahkan semua .wav dari subfolder ke root wavs_dir
+            print(f"🧹 [PIPELINE] Flattening ZIP structure...")
+            for root, dirs, files in os.walk(wavs_dir, topdown=False):
+                if root == wavs_dir: continue
+                for f in files:
+                    if f.lower().endswith(".wav"):
+                        shutil.move(os.path.join(root, f), os.path.join(wavs_dir, f))
+            print(f"✅ [PIPELINE] Extraction & Flatten complete.")
         else:
             print(f"✂️ [PIPELINE] Splitting long audio: {local_raw_file}")
             split_long_audio(input_dir=raw_audio_dir, output_dir=wavs_dir)
@@ -125,7 +133,10 @@ def run_training_pipeline(request: TrainingRequest):
             "message": "Transcribing audio with Whisper..."
         })
         metadata_path = os.path.join(base_work_dir, "metadata.csv")
-        transcribe_with_whisper(wavs_dir=wavs_dir, metadata_path=metadata_path, whisper_model="medium")
+        success_meta = transcribe_with_whisper(wavs_dir=wavs_dir, metadata_path=metadata_path, whisper_model="medium")
+
+        if not success_meta or not os.path.exists(metadata_path):
+             raise Exception(f"Gagal membuat metadata.csv! Pastikan ZIP berisi file .wav.")
 
         # 4. TRAINING
         training_progress.update({
