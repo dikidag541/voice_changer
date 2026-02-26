@@ -56,14 +56,21 @@ class VoiceChangerController extends Controller
                 return response()->json([
                     'success' => true,
                     'speaker_id' => $data['speaker_id'],
-                    'message' => 'Profile suara berhasil diekstrak dan disimpan di server.'
+                    'message' => 'Profile suara berhasil diekstrak.'
                 ]);
             }
 
-            return response()->json(['error' => 'Gagal memproses suara: ' . $response->body()], 500);
+            return response()->json([
+                'success' => false,
+                'speaker_id' => 'guest_admin',
+                'message' => 'Local AI Engine Offline (Port 5000), menggunakan profile default.'
+            ]);
         } catch (\Exception $e) {
-            Log::error("❌ INITIALIZE ERROR: " . $e->getMessage());
-            return response()->json(['error' => 'Server AI Offline / Timeout'], 500);
+            return response()->json([
+                'success' => false,
+                'speaker_id' => 'guest_admin', 
+                'message' => 'AI Engine Offline, lanjut ke Training...'
+            ]);
         }
     }
 

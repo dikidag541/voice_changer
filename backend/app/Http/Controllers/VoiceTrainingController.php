@@ -24,7 +24,7 @@ class VoiceTrainingController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'audio'      => 'required|file|mimes:wav,mp3,m4a|max:51200',
+            'audio'      => 'required|file|mimes:wav,mp3,m4a|max:524288', // Naikkan ke 512MB
             'model_name' => 'nullable|string',
             'epochs'     => 'nullable|integer|min:1|max:500'
         ]);

@@ -14,16 +14,17 @@ Route::get('/characters/{id}', [\App\Http\Controllers\CharacterController::class
 Route::get('/engine-status', [VoiceChangerController::class, 'engineStatus']);
 Route::get('/balance', [VoiceChangerController::class, 'getBalance']);
 
-// Protected routes
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/initialize-voice', [VoiceChangerController::class, 'initializeVoice']);
-    Route::post('/clone-voice', [VoiceChangerController::class, 'clone']);
-    Route::post('/start-training', [VoiceChangerController::class, 'startTraining']);
-    Route::get('/training-status', [VoiceChangerController::class, 'trainingStatus']);
-    Route::get('/list-pods', [VoiceChangerController::class, 'listPods']);
-    Route::post('/terminate-pod', [VoiceChangerController::class, 'terminatePod']);
+// Training & Generation (Public for testing)
+Route::post('/initialize-voice', [VoiceChangerController::class, 'initializeVoice']);
+Route::post('/clone-voice', [VoiceChangerController::class, 'clone']);
+Route::post('/start-training', [VoiceChangerController::class, 'startTraining']);
+Route::get('/training-status', [VoiceChangerController::class, 'trainingStatus']);
+Route::get('/list-pods', [VoiceChangerController::class, 'listPods']);
+Route::post('/terminate-pod', [VoiceChangerController::class, 'terminatePod']);
+Route::post('/train', [\App\Http\Controllers\VoiceTrainingController::class, 'store']);
+Route::post('/generate', [\App\Http\Controllers\VoiceGenerateController::class, 'generate']);
 
-    // SaaS core routes
-    Route::post('/train', [\App\Http\Controllers\VoiceTrainingController::class, 'store']);
-    Route::post('/generate', [\App\Http\Controllers\VoiceGenerateController::class, 'generate']);
+// Protected routes (User only)
+Route::middleware('auth:sanctum')->group(function () {
+    // Tambahkan route yang benar-benar butuh login di sini nanti
 });
