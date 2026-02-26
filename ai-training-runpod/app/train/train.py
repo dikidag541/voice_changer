@@ -1,13 +1,14 @@
 """
-XTTS v2 Fine-Tuning Script - ROBUST VERSION
-===========================================
-Dijalankan di RunPod. Fokus pada stabilitas dataset kecil (6 s/d 100 sample).
+XTTS v2 Fine-Tuning Script - ULTRA-ROBUST VERSION
+=================================================
+Dijalankan di RunPod. Fokus pada deteksi error "Silent Exit" dan validasi data.
 """
 
 import os
 import sys
 import torch
 import torch.serialization
+import traceback
 from pathlib import Path
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts, XttsAudioConfig, XttsArgs
@@ -51,44 +52,60 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     config = XttsConfig()
     config.load_json(config_path)
 
-    # 3. CLEAN DATASET & SPLIT
+    # 3. CLEAN DATASET & STRICT VALIDATION
     metadata_file = os.path.join(dataset_path, "metadata.csv")
-    print(f"🧹 Cleaning metadata: {metadata_file}")
+    wavs_path = os.path.join(dataset_path, "wavs")
+    print(f"🧹 Processing metadata: {metadata_file}")
     
+    if not os.path.exists(metadata_file):
+        print(f"❌ ERROR: metadata.csv tidak ditemukan!")
+        return False
+
     with open(metadata_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
     processed_lines = []
+    missing_count = 0
     for line in lines:
         parts = line.strip().split("|")
         if len(parts) < 2: continue
-        filename = parts[0].replace(".wav", "")
+        
+        filename_id = parts[0].replace(".wav", "")
+        # LJSpeech butuh: ID|Transcription|NormalizedTranscription
         text = clean_indonesian_for_xtts(parts[1])
-        processed_lines.append(f"{filename}|{text}|{text}\n")
+        
+        # CEK FISIK FILE (Mencegah SystemExit: 1 di Trainer)
+        if os.path.exists(os.path.join(wavs_path, filename_id + ".wav")):
+            processed_lines.append(f"{filename_id}|{text}|{text}\n")
+        else:
+            missing_count += 1
 
+    if missing_count > 0:
+        print(f"⚠️  WARNING: {missing_count} file audio tidak ditemukan di folder wavs!")
+    
     with open(metadata_file, 'w', encoding='utf-8') as f:
         f.writelines(processed_lines)
     
     num_samples = len(processed_lines)
     print(f"✅ Dataset ready: {num_samples} samples.")
+    if num_samples == 0:
+        print("❌ ERROR: Tidak ada data valid untuk dilatih!")
+        return False
 
-    # 4. OPTIMASI CONFIG (Dinamis: Dataset Kecil vs Besar)
-    config.languages = ["en"] # Proxy EN tetap dipakai untuk stabilitas
-    
-    # Deteksi Mode: Ultra-Small (< 20 klip) vs Standard (>= 20 klip)
+    # 4. OPTIMASI CONFIG (Proxy EN)
+    config.languages = ["en"]
     is_tiny = num_samples < 20
     
     if is_tiny:
         auto_batch = 1
         auto_grad_accum = 1
         eval_split = 0.2 if num_samples > 1 else 0
-        print(f"⚠️  Mode: ULTRA-SMALL ({num_samples} samples). Batch Size: 1")
+        print(f"⚠️  Mode: ULTRA-SMALL. Batch: 1")
     else:
-        # Untuk dataset besar, kita bisa naikkan batch agar lebih cepat
         auto_batch = batch_size if vram > 16 else (2 if vram > 8 else 1)
         auto_grad_accum = 1 if vram > 16 else 2
         eval_split = 0.1
-        print(f"🚀 Mode: STANDARD ({num_samples} samples). Batch Size: {auto_batch}")
+        print(f"🚀 Mode: STANDARD. Batch: {auto_batch}")
 
     config.epochs = epochs
     config.batch_size = auto_batch
@@ -96,20 +113,22 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     config.eval_split_size = eval_split
     config.mixed_precision = False
     
+    # CRITICAL: Matikan Worker Multiprocessing biar error beneran nongol
+    config.num_loader_workers = 0
+    config.num_eval_loader_workers = 0
+    
     if hasattr(config, "model_args"):
         config.model_args.gpt_batch_size = auto_batch
     
-    # Defaults
     config.lr = 5e-6
     config.save_step = 250 if not is_tiny else 1000
     config.print_step = 10 if not is_tiny else 1
-    config.plot_step = 100
     
     dataset_config = BaseDatasetConfig(
         formatter="ljspeech",
         meta_file_train="metadata.csv",
         path=dataset_path,
-        language="en" # Proxy
+        language="en"
     )
     config.datasets = [dataset_config]
 
@@ -119,18 +138,16 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     model.load_checkpoint(config, checkpoint_dir=model_dir, eval=False, use_deepspeed=False)
     model.to(device)
 
-    # 6. COMPATIBILITY PATCHES (Sangat Penting!)
+    # 6. COMPATIBILITY PATCHES
     if not hasattr(model, "get_criterion"):
         model.get_criterion = lambda: torch.nn.L1Loss()
     
-    # Patch tokenizer (Paling sering bikin SystemExit)
     if hasattr(model, "tokenizer"):
         if not hasattr(model.tokenizer, "text_to_ids"):
             model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
         if not hasattr(model.tokenizer, "print_logs"):
             model.tokenizer.print_logs = lambda x: None
 
-    # Patch Speaker/Language managers
     for manager_name in ["speaker_manager", "language_manager"]:
         manager = getattr(model, manager_name, None)
         if manager is not None:
@@ -139,9 +156,12 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
             if not hasattr(manager, "get_id_by_name"):
                 manager.get_id_by_name = lambda x: 0
 
-    # 7. TRAINER
+    # 7. START TRAINER
     print(f"🚀 Starting training (Proxy Lang: EN)...")
-    training_args = TrainerArgs() # Kosongkan total
+    training_args = TrainerArgs(
+        dashboard_logger=None,
+        project_name="xtts_fine_tuning"
+    )
 
     try:
         trainer = Trainer(
@@ -156,12 +176,12 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
         print("\n✅ TRAINING SELESAI!")
         return True
     except Exception as e:
-        print(f"\n❌ Error during training: {str(e)}")
-        import traceback
+        print(f"\n❌ Error during training (Exception): {str(e)}")
         traceback.print_exc()
         return False
     except SystemExit as e:
-        print(f"\n⚠️ SystemExit caught: {e}")
+        print(f"\n⚠️ SystemExit caught (Code {e.code if hasattr(e, 'code') else '1'}):")
+        traceback.print_exc()
         return False
 
 
