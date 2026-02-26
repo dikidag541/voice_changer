@@ -66,7 +66,7 @@ class RunpodService
                     { key: "AWS_ENDPOINT", value: "' . env('AWS_ENDPOINT') . '" },
                     { key: "AWS_URL", value: "' . env('AWS_URL') . '" }
                   ],
-                  dockerArgs: "bash -c \'command -v ffmpeg >/dev/null 2>&1 || (apt-get update && apt-get install -y ffmpeg) && if [ ! -d \"/workspace/voice-changer\" ]; then cd /workspace && git clone --depth 1 -b branch-pandu https://github.com/pandustrr/voice-changer; else cd /workspace/voice-changer && git pull origin branch-pandu; fi && cd /workspace/voice-changer/ai-training-runpod && pip install --ignore-installed -r requirements.txt && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888\'"
+                  dockerArgs: "bash -c \'apt-get update && apt-get install -y ffmpeg git git-lfs && if [ ! -d \"/workspace/voice-changer\" ]; then cd /workspace && git clone --depth 1 -b diki https://github.com/dikidag541/voice_changer voice-changer; else cd /workspace/voice-changer && git pull origin diki; fi && cd /workspace/voice-changer/ai-training-runpod && pip install --no-cache-dir -r requirements.txt && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888\'"
                 }
               ) {
                 id
