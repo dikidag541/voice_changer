@@ -113,8 +113,8 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     # 4. OPTIMASI CONFIG (Hyper-Safety Mode)
     config.languages = ["en"] # Proxy EN tetap
     
-    # FORCE EVAL 0: Mencegah error 'ZeroDivisionError' atau crash saat iterasi pertama
-    config.eval_split_size = 0.0
+    # KEMBALIKAN EVAL SEDIKIT (1%): Biar mesin gak ngambek nyari data ujian
+    config.eval_split_size = 0.01
     
     config.epochs = epochs
     config.batch_size = 1 # Force 1 untuk stabilitas mutlak
