@@ -66,6 +66,7 @@ class RunpodService
                 'awsEndpoint' => env('AWS_ENDPOINT', ''),
                 'awsUrl' => env('AWS_URL', ''),
                 'runpodKey' => env('RUNPOD_API_KEY', ''),
+                'coquiAgreed' => "1",
                 'dockerArgs' => "bash -c 'set -e && echo \"[1/4] Installing system dependencies (ffmpeg, espeak, etc)...\" && apt-get update && apt-get install -y ffmpeg git git-lfs espeak-ng build-essential g++ && echo \"[2/4] Cloning codebase from GitHub...\" && (if [ ! -d \"/workspace/voice-changer\" ]; then cd /workspace && git clone --depth 1 -b diki https://github.com/dikidag541/voice_changer voice-changer; else cd /workspace/voice-changer && git pull origin diki; fi) && echo \"[3/4] Installing AI libraries (This takes 5-10 minutes)...\" && cd /workspace/voice-changer/ai-training-runpod && pip install --upgrade pip && pip install --ignore-installed -r requirements.txt && echo \"[4/4] Starting training server...\" && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888'"
             ];
 
@@ -92,7 +93,8 @@ class RunpodService
                         { key: "AWS_BUCKET", value: ' . $e['awsBucket'] . ' },
                         { key: "AWS_ENDPOINT", value: ' . $e['awsEndpoint'] . ' },
                         { key: "AWS_URL", value: ' . $e['awsUrl'] . ' },
-                        { key: "RUNPOD_API_KEY", value: ' . $e['runpodKey'] . ' }
+                        { key: "RUNPOD_API_KEY", value: ' . $e['runpodKey'] . ' },
+                        { key: "COQUI_TOS_AGREED", value: ' . $e['coquiAgreed'] . ' }
                       ],
                       dockerArgs: ' . $e['dockerArgs'] . '
                     }
