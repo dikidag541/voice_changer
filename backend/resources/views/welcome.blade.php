@@ -180,7 +180,7 @@
                                 </svg>
                             </div>
                             <span id="uploadLabel" class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 truncate w-full text-center">Upload</span>
-                            <input type="file" id="fileUpload" class="hidden" accept="audio/*">
+                            <input type="file" id="fileUpload" class="hidden" accept="audio/*,.zip">
                         </label>
                     </div>
                 </div>
@@ -393,10 +393,18 @@
             elements.fileUpload.addEventListener('change', async (e) => {
                 if (e.target.files[0]) {
                     finalWavBlob = e.target.files[0];
-                    elements.uploadLabel.textContent = finalWavBlob.name.substring(0, 8) + '...';
-                    elements.audioPreview.src = URL.createObjectURL(finalWavBlob);
-                    elements.previewContainer.classList.remove('hidden');
-                    await initializeVoiceProfile(finalWavBlob);
+                    const isZip = finalWavBlob.name.toLowerCase().endsWith('.zip');
+                    
+                    if (isZip) {
+                        elements.uploadLabel.textContent = "Dataset ZIP";
+                        elements.recordStatus.textContent = "Ready";
+                        showToast("Dataset ZIP terdeteksi! Siap untuk Fine-Tuning.", "success");
+                    } else {
+                        elements.uploadLabel.textContent = finalWavBlob.name.substring(0, 8) + '...';
+                        elements.audioPreview.src = URL.createObjectURL(finalWavBlob);
+                        elements.previewContainer.classList.remove('hidden');
+                        await initializeVoiceProfile(finalWavBlob);
+                    }
                 }
             });
 
