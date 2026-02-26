@@ -1,0 +1,20 @@
+# Dockerfile.worker - Pre-packaged image for Voice Changer Training
+# Build: docker build -t your-dockerhub-user/voice-changer-worker:v1 -f Dockerfile.worker .
+# Push: docker push your-dockerhub-user/voice-changer-worker:v1
+
+FROM runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04
+
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y ffmpeg git git-lfs && rm -rf /var/lib/apt/lists/*
+
+# Copy the entire ai-training-runpod directory
+COPY ./ai-training-runpod /workspace/voice-changer/ai-training-runpod
+
+# Install Python dependencies
+WORKDIR /workspace/voice-changer/ai-training-runpod
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Entrypoint
+CMD ["python3", "-m", "uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8888"]

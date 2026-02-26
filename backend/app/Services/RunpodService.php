@@ -45,50 +45,70 @@ class RunpodService
     public function createPod($name = 'voice_changer_A40')
     {
         $apiKey = env('RUNPOD_API_KEY');
-        $query = '
-            mutation {
-              podFindAndDeployOnDemand(
-                input: {
-                  cloudType: COMMUNITY,
-                  gpuCount: 1,
-                  gpuTypeId: "NVIDIA RTX A4000",
-                  imageName: "runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04",
-                  containerDiskInGb: 10,
-                  volumeInGb: 30,
-                  volumeMountPath: "/workspace",
-                  ports: "8888/http",
-                  name: "' . $name . '",
-                  env: [
-                    { key: "AWS_ACCESS_KEY_ID", value: "' . env('AWS_ACCESS_KEY_ID') . '" },
-                    { key: "AWS_SECRET_ACCESS_KEY", value: "' . env('AWS_SECRET_ACCESS_KEY') . '" },
-                    { key: "AWS_DEFAULT_REGION", value: "' . env('AWS_DEFAULT_REGION', 'auto') . '" },
-                    { key: "AWS_BUCKET", value: "' . env('AWS_BUCKET') . '" },
-                    { key: "AWS_ENDPOINT", value: "' . env('AWS_ENDPOINT') . '" },
-                    { key: "AWS_URL", value: "' . env('AWS_URL') . '" },
-                    { key: "RUNPOD_API_KEY", value: "' . env('RUNPOD_API_KEY') . '" }
-                  ],
-                  dockerArgs: "bash -c \'apt-get update && apt-get install -y ffmpeg git git-lfs && if [ ! -d \"/workspace/voice-changer\" ]; then cd /workspace && git clone --depth 1 -b diki https://github.com/dikidag541/voice_changer voice-changer; else cd /workspace/voice-changer && git pull origin diki; fi && cd /workspace/voice-changer/ai-training-runpod && pip install --no-cache-dir --ignore-installed -r requirements.txt && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888\'"
+        $gpus = [
+            "NVIDIA RTX A4000",
+            "NVIDIA A5000",
+            "NVIDIA RTX 3090",
+            "NVIDIA RTX 4000 SFF Ada Generation"
+        ];
+
+        foreach ($gpus as $gpu) {
+            Log::info("Mencoba menyewa GPU: $gpu...");
+
+            $query = '
+                mutation {
+                  podFindAndDeployOnDemand(
+                    input: {
+                      cloudType: COMMUNITY,
+                      gpuCount: 1,
+                      gpuTypeId: "' . $gpu . '",
+                      imageName: "runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04",
+                      containerDiskInGb: 10,
+                      volumeInGb: 30,
+                      volumeMountPath: "/workspace",
+                      ports: "8888/http",
+                      name: "' . $name . '",
+                      env: [
+                        { key: "AWS_ACCESS_KEY_ID", value: "' . env('AWS_ACCESS_KEY_ID') . '" },
+                        { key: "AWS_SECRET_ACCESS_KEY", value: "' . env('AWS_SECRET_ACCESS_KEY') . '" },
+                        { key: "AWS_DEFAULT_REGION", value: "' . env('AWS_DEFAULT_REGION', 'auto') . '" },
+                        { key: "AWS_BUCKET", value: "' . env('AWS_BUCKET') . '" },
+                        { key: "AWS_ENDPOINT", value: "' . env('AWS_ENDPOINT') . '" },
+                        { key: "AWS_URL", value: "' . env('AWS_URL') . '" },
+                        { key: "RUNPOD_API_KEY", value: "' . env('RUNPOD_API_KEY') . '" }
+                      ],
+                      dockerArgs: "bash -c \'apt-get update && apt-get install -y ffmpeg git git-lfs && if [ ! -d \"/workspace/voice-changer\" ]; then cd /workspace && git clone --depth 1 -b diki https://github.com/dikidag541/voice_changer voice-changer; else cd /workspace/voice-changer && git pull origin diki; fi && cd /workspace/voice-changer/ai-training-runpod && pip install --no-cache-dir --ignore-installed -r requirements.txt && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888\'"
+                    }
+                  ) {
+                    id
+                  }
                 }
-              ) {
-                id
-              }
+            ';
+
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])->post("https://api.runpod.io/graphql?api_key=$apiKey", [
+                'query' => $query,
+            ]);
+
+            $data = $response->json();
+
+            if (isset($data['data']['podFindAndDeployOnDemand']['id'])) {
+                Log::info("✅ Berhasil menyewa GPU: $gpu (Pod ID: " . $data['data']['podFindAndDeployOnDemand']['id'] . ")");
+                return $data['data']['podFindAndDeployOnDemand'];
             }
-        ';
 
-        $response = Http::withHeaders([
-            'Content-Type' => 'application/json',
-            'Authorization' => $apiKey,
-        ])->post("https://api.runpod.io/graphql?api_key=$apiKey", [
-            'query' => $query
-        ]);
+            $errorMsg = json_encode($data['errors'] ?? $data);
+            if (str_contains($errorMsg, 'SUPPLY_CONSTRAINT')) {
+                Log::warning("⚠️ GPU $gpu Out of Stock, mencoba tipe lain...");
+                continue;
+            }
 
-        $data = $response->json();
-
-        if (isset($data['data']['podFindAndDeployOnDemand'])) {
-            return $data['data']['podFindAndDeployOnDemand'];
+            // If there's an error but not SUPPLY_CONSTRAINT, return it immediately
+            return ['error' => 'Gagal membuat pod via GraphQL', 'details' => $data];
         }
 
-        return ['error' => 'Gagal membuat pod via GraphQL', 'details' => $data];
+        return ['error' => 'Semua tipe GPU sedang Out of Stock. Silakan coba lagi nanti.'];
     }
 
     /**
