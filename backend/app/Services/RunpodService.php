@@ -51,7 +51,7 @@ class RunpodService
                 input: {
                   cloudType: SECURE,
                   gpuCount: 1,
-                  gpuTypeId: "NVIDIA RTX 4090",
+                  gpuTypeId: "NVIDIA RTX 3090",
                   imageName: "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
                   containerDiskInGb: 30,
                   volumeInGb: 100,
