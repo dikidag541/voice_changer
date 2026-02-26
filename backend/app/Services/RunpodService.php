@@ -49,12 +49,12 @@ class RunpodService
             mutation {
               podFindAndDeployOnDemand(
                 input: {
-                  cloudType: SECURE,
+                  cloudType: COMMUNITY,
                   gpuCount: 1,
-                  gpuTypeId: "NVIDIA RTX 3090",
-                  imageName: "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
-                  containerDiskInGb: 30,
-                  volumeInGb: 100,
+                  gpuTypeId: "NVIDIA A5000",
+                  imageName: "runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04",
+                  containerDiskInGb: 20,
+                  volumeInGb: 50,
                   volumeMountPath: "/workspace",
                   ports: "8888/http",
                   name: "' . $name . '",
