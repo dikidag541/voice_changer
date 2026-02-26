@@ -11,6 +11,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from services.s3_manager import S3Manager
 from services.local_storage_manager import LocalStorageManager
+from app.preprocessing.split_audio import split_long_audio
+from app.preprocessing.make_metadata import transcribe_with_whisper
+from app.train.train import start_training
 
 app = FastAPI(title="Runpod AI Training Worker")
 
@@ -44,26 +47,47 @@ def run_training_pipeline(request: TrainingRequest):
         else:
             local_storage.download_dataset(None, request.audio_path, dataset_local_path)
 
-        # 2. PREPROCESSING (Simulasi)
-        print("🔍 [PIPELINE] Preprocessing audio...")
-        # Nantinya panggil fungsi dari app/preprocessing/clean.py dsb.
+        # 2. PREPROCESSING
+        print("🔍 [PIPELINE] Memulai preprocessing...")
+        raw_audio_dir = os.path.join(work_dir, "raw_audio")
+        wavs_dir = os.path.join(work_dir, "wavs")
+        metadata_path = os.path.join(work_dir, "metadata.csv")
+        
+        os.makedirs(raw_audio_dir, exist_ok=True)
+        # Pindahkan dataset.wav ke raw_audio folder agar diproses split_audio.py
+        os.rename(dataset_local_path, os.path.join(raw_audio_dir, "dataset.wav"))
+        
+        # Split Audio
+        split_long_audio(input_dir=raw_audio_dir, output_dir=wavs_dir)
+        
+        # Transcribe
+        transcribe_with_whisper(wavs_dir=wavs_dir, metadata_path=metadata_path, whisper_model="large-v3")
 
-        # 3. START TRAINING (Simulasi panggil train.py)
-        print("🚀 [PIPELINE] Memanggil XTTS Trainer...")
-        # Import fungsi training asli di sini
-        # from app.train.train import start_training
-        # start_training(dataset_local_path, work_dir)
+        # 3. START TRAINING
+        print("🚀 [PIPELINE] Memulai XTTS Trainer...")
+        output_model_dir = os.path.join(work_dir, "output")
+        success = start_training(
+            dataset_path=work_dir, # metadata.csv ada di work_dir, wavs ada di work_dir/wavs
+            output_path=output_model_dir,
+            epochs=30
+        )
+        
+        if not success:
+            raise Exception("Training failed!")
 
         # 4. UPLOAD HASIL
-        model_remote_path = f"models/{request.user_id}/{request.model_name}.pth"
-        model_local_path = os.path.join(work_dir, "best_model.pth")
+        # Ambil model terbaik dari folder output
+        model_local_path = os.path.join(output_model_dir, "best_model.pth")
+        config_local_path = os.path.join(output_model_dir, "config.json")
         
-        # Buat file dummy jika belum ada (hanya untuk testing)
-        if not os.path.exists(model_local_path):
-            with open(model_local_path, "w") as f: f.write("Dummy Model Data")
+        # Path di R2
+        model_remote_path = f"models/{request.user_id}/{request.model_name}.pth"
+        config_remote_path = f"models/{request.user_id}/config.json"
 
         if is_s3:
             s3.upload_model(model_local_path, "suara-cloning", model_remote_path)
+            if os.path.exists(config_local_path):
+                s3.upload_model(config_local_path, "suara-cloning", config_remote_path)
         else:
             local_storage.upload_model(model_local_path, None, model_remote_path)
             

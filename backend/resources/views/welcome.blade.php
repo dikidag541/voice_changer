@@ -132,7 +132,19 @@
                         <div class="w-2 h-2 rounded-full bg-indigo-500"></div>
                         Referensi Suara Terdeteksi
                     </div>
-                    <audio id="audioPreview" controls class="w-full h-8"></audio>
+                    <audio id="audioPreview" controls class="w-full h-8 mb-4"></audio>
+                    
+                    <!-- PREMIUM FINE-TUNING SECTION -->
+                    <div id="premiumSection" class="mt-4 p-4 rounded-xl bg-indigo-600/10 border border-indigo-500/20">
+                        <div class="flex items-center justify-between mb-2">
+                             <h3 class="text-sm font-bold text-white uppercase tracking-wider">Premium Fine-Tuning</h3>
+                             <span class="text-[10px] font-bold bg-indigo-500 text-white px-2 py-0.5 rounded-full">Dataset Ready</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mb-4">Gunakan audio 30 menit untuk hasil suara yang sangat natural.</p>
+                        <button id="startTrainingBtn" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2">
+                            <span>Mulai Latih Suara Premium (Fine-Tuning)</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -225,7 +237,8 @@
                 generateBtn: document.getElementById('generateBtn'),
                 resultSection: document.getElementById('resultSection'),
                 finalAudio: document.getElementById('finalAudio'),
-                downloadBtn: document.getElementById('downloadBtn')
+                downloadBtn: document.getElementById('downloadBtn'),
+                startTrainingBtn: document.getElementById('startTrainingBtn')
             };
 
             elements.speedSelector.addEventListener('input', () => elements.speedValue.textContent = elements.speedSelector.value + 'x');
@@ -299,6 +312,42 @@
                     elements.audioPreview.src = URL.createObjectURL(finalWavBlob);
                     elements.previewContainer.classList.remove('hidden');
                     await initializeVoiceProfile(finalWavBlob);
+                }
+            });
+
+            elements.startTrainingBtn.addEventListener('click', async () => {
+                if (!finalWavBlob) return;
+
+                elements.startTrainingBtn.disabled = true;
+                const originalText = elements.startTrainingBtn.innerHTML;
+                elements.startTrainingBtn.innerHTML = "Uploading & Starting Training...";
+
+                const formData = new FormData();
+                formData.append('audio', finalWavBlob);
+
+                try {
+                    const response = await fetch('/api/train', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                        }
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        alert("Berhasil! Training telah dimulai di RunPod. Silakan cek dashboard RunPod Anda.");
+                        elements.startTrainingBtn.innerHTML = "Training in Progress...";
+                    } else {
+                        alert("Error: " + (data.message || "Gagal memulai training"));
+                        elements.startTrainingBtn.disabled = false;
+                        elements.startTrainingBtn.innerHTML = originalText;
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Koneksi gagal");
+                    elements.startTrainingBtn.disabled = false;
+                    elements.startTrainingBtn.innerHTML = originalText;
                 }
             });
 

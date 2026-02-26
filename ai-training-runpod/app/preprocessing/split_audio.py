@@ -2,16 +2,11 @@ import os
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 
-def split_long_audio():
+def split_long_audio(input_dir="raw_audio", output_dir="wavs"):
     """
     Memotong audio panjang (30 menit) menjadi segmen-segmen pendek
     untuk training XTTS v2.
-    
-    Input: raw_audio/ (file audio panjang)
-    Output: wavs/ (segmen-segmen pendek 5-10 detik)
     """
-    input_dir = "raw_audio"
-    output_dir = "wavs"
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

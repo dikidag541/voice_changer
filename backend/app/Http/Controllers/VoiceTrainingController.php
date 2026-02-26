@@ -16,13 +16,26 @@ class VoiceTrainingController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate(['audio' => 'required|file']);
+        $request->validate(['audio' => 'required|file|mimes:wav,mp3,m4a|max:50000']);
 
-        // 1. Upload ke S3
-        // 2. Trigger Runpod
-        $userId = $request->user()?->id;
-        $this->runpod->startTraining($userId, $request->file('audio')->path());
+        $userId = $request->user()?->id ?? 'guest';
+        $file = $request->file('audio');
 
-        return response()->json(['message' => 'Training started']);
+        // 1. Upload ke S3 (Cloudflare R2)
+        // Simpan di folder raw_audio dengan nama unik
+        $path = $file->storeAs(
+            "raw_audio/{$userId}",
+            time() . '_' . $file->getClientOriginalName(),
+            's3'
+        );
+
+        // 2. Trigger Runpod dengan path remote S3
+        $this->runpod->startTraining($userId, $path);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Training started automatically on RunPod.',
+            'remote_path' => $path
+        ]);
     }
 }

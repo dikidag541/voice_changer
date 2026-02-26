@@ -1,30 +1,11 @@
 """
 XTTS v2 Fine-Tuning Script untuk Bahasa Indonesia
 ===================================================
-
-Script ini akan fine-tune model XTTS v2 dengan dataset Bahasa Indonesia
-untuk menghasilkan suara yang lebih native dan natural.
-
-PERSIAPAN:
-1. Siapkan folder training/ dengan struktur:
-   training/
-   ├── wavs/           # File audio WAV (22050Hz, mono)
-   └── metadata.csv    # Format: filename.wav|teks transkrip
-
-2. Install dependencies:
-   pip install TTS trainer
-
-3. Jalankan script ini:
-   python finetune_xtts_indo.py
-
-CATATAN:
-- Minimum 10 menit audio untuk hasil bagus
-- Semakin banyak data, semakin baik hasilnya
-- Training membutuhkan GPU (CUDA) untuk kecepatan optimal
-- Tanpa GPU, training akan sangat lambat (gunakan Colab)
+Dijalankan di RunPod GPU (RTX 4090 / RTX 3090).
 """
 
 import os
+import sys
 import torch
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
@@ -39,162 +20,157 @@ def patched_load(*args, **kwargs):
     return orig_load(*args, **kwargs)
 torch.load = patched_load
 
-# ============================================
-# KONFIGURASI
-# ============================================
 
-# Path dataset
-DATASET_PATH = "./training"
-WAVS_PATH = os.path.join(DATASET_PATH, "wavs")
-METADATA_FILE = os.path.join(DATASET_PATH, "metadata.csv")
+def download_base_model():
+    """
+    Download XTTS v2 base model menggunakan built-in TTS downloader.
+    Disimpan di ~/.local/share/tts/ secara otomatis.
+    """
+    from TTS.utils.manage import ModelManager
+    model_name = "tts_models/multilingual/multi-dataset/xtts_v2"
+    print(f"📦 Downloading base model: {model_name}")
+    manager = ModelManager()
+    model_path, config_path, _ = manager.download_model(model_name)
+    print(f"✅ Model downloaded to: {model_path}")
+    return os.path.dirname(model_path)
 
-# Path output model
-OUTPUT_PATH = "./xtts_indonesian_finetuned"
-os.makedirs(OUTPUT_PATH, exist_ok=True)
 
-# Cek GPU
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"🖥️  Device: {device}")
-if device == "cpu":
-    print("   https://colab.research.google.com/")
-    vram = 0
-else:
-    vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-    print(f"📟 VRAM: {vram:.2f} GB")
+def start_training(dataset_path, output_path, epochs=30, batch_size=4):
+    """
+    Fungsi utama untuk memulai fine-tuning XTTS v2 Bahasa Indonesia.
 
-# ============================================
-# LOAD BASE MODEL
-# ============================================
+    Args:
+        dataset_path (str): Folder berisi wavs/ dan metadata.csv
+        output_path  (str): Folder tujuan menyimpan model hasil training
+        epochs       (int): Jumlah epoch training (default: 30)
+        batch_size   (int): Batch size (otomatis disesuaikan dengan VRAM)
+    """
+    wavs_path = os.path.join(dataset_path, "wavs")
+    metadata_file = os.path.join(dataset_path, "metadata.csv")
 
-print("\n📦 Loading XTTS v2 base model...")
-config = XttsConfig()
-config.load_json("https://coqui.gateway.scarf.sh/v0.14.3/tts_models--multilingual--multi-dataset--xtts_v2/config.json")
+    os.makedirs(output_path, exist_ok=True)
 
-model = Xtts.init_from_config(config)
-model.load_checkpoint(
-    config,
-    checkpoint_dir="https://coqui.gateway.scarf.sh/v0.14.3/tts_models--multilingual--multi-dataset--xtts_v2/",
-    eval=False,
-    use_deepspeed=False
-)
+    # ── Cek GPU ──────────────────────────────────────────────────────────────
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"🖥️  Device: {device}")
+    if device == "cpu":
+        print("   ⚠️ WARNING: Training di CPU akan sangat lambat!")
+        vram = 0
+    else:
+        vram = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        print(f"📟 VRAM: {vram:.2f} GB")
 
-print("✅ Base model loaded!")
+    # ── Download / Temukan Base Model ─────────────────────────────────────────
+    model_dir = download_base_model()
 
-# ============================================
-# PREPARE DATASET
-# ============================================
+    config_path = os.path.join(model_dir, "config.json")
+    if not os.path.exists(config_path):
+        # Coba cari di path default TTS
+        tts_home = os.path.expanduser(
+            "~/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2"
+        )
+        config_path = os.path.join(tts_home, "config.json")
+        model_dir = tts_home
 
-print("\n📊 Preparing Indonesian dataset...")
+    print(f"\n📦 Loading XTTS v2 base model dari: {model_dir}")
+    config = XttsConfig()
+    config.load_json(config_path)
 
-# Cek apakah dataset ada
-if not os.path.exists(METADATA_FILE):
-    print(f"❌ ERROR: File {METADATA_FILE} tidak ditemukan!")
-    print("\nBuat file metadata.csv dengan format:")
-    print("audio_001.wav|Teks transkrip dalam Bahasa Indonesia")
-    print("audio_002.wav|Contoh kalimat kedua")
-    exit(1)
-
-if not os.path.exists(WAVS_PATH):
-    print(f"❌ ERROR: Folder {WAVS_PATH} tidak ditemukan!")
-    exit(1)
-
-# Hitung jumlah data
-with open(METADATA_FILE, 'r', encoding='utf-8') as f:
-    num_samples = len(f.readlines())
-
-print(f"✅ Dataset found: {num_samples} samples")
-
-# ============================================
-# TRAINING CONFIGURATION
-# ============================================
-
-# Training arguments
-training_args = TrainerArgs(
-    # Epochs (iterasi training)
-    epochs=30,  # Ditingkatkan untuk kualitas "sangat bagus" (30-50)
-    
-    # Batch size & Gradient Accumulation
-    # OPTIMASI UNTUK RTX 4090 (24GB VRAM)
-    batch_size=4 if vram > 16 else 1,
-    grad_accum_steps=1 if vram > 16 else 4,
-    
-    # Learning rate
-    lr=5e-6,  # Learning rate rendah untuk fine-tuning
-    
-    # Checkpoint
-    save_step=100,
-    save_n_checkpoints=3,
-    save_best_after=100,
-    
-    # Output
-    output_path=OUTPUT_PATH,
-    
-    # Logging
-    print_step=10,
-    plot_step=100,
-    
-    # Mixed precision (PENTING untuk hemat VRAM)
-    mixed_precision=True,  # FP16 untuk hemat memory
-    
-    # Memory optimization
-    use_grad_scaler=True,  # Gradient scaling untuk stability
-)
-
-# Update config untuk Indonesian
-config.languages = ["id"]  # Fokus ke Bahasa Indonesia
-config.dataset_config = {
-    "formatter": "ljspeech",
-    "meta_file_train": METADATA_FILE,
-    "path": DATASET_PATH,
-    "language": "id"
-}
-
-# Apply Indonesian Cleaner to metadata
-print("🧹 Cleaning transcripts with Indonesian Cleaner...")
-with open(METADATA_FILE, 'r', encoding='utf-8') as f:
-    lines = f.readlines()
-
-with open(METADATA_FILE, 'w', encoding='utf-8') as f:
-    for line in lines:
-        filename, text = line.strip().split("|")
-        cleaned_text = clean_indonesian_for_xtts(text)
-        f.write(f"{filename}|{cleaned_text}\n")
-print("✅ Transcripts cleaned.")
-
-# ============================================
-# START TRAINING
-# ============================================
-
-print("\n🚀 Starting fine-tuning...")
-print(f"   Epochs: {training_args.epochs}")
-print(f"   Batch size: {training_args.batch_size}")
-print(f"   Device: {device}")
-print(f"   Output: {OUTPUT_PATH}")
-print("\n" + "="*50)
-
-try:
-    trainer = Trainer(
-        training_args,
+    model = Xtts.init_from_config(config)
+    model.load_checkpoint(
         config,
-        output_path=OUTPUT_PATH,
-        model=model,
-        train_samples=None,  # Will load from metadata
-        eval_samples=None
+        checkpoint_dir=model_dir,
+        eval=False,
+        use_deepspeed=False
     )
-    
-    trainer.fit()
-    
-    print("\n" + "="*50)
-    print("✅ Fine-tuning selesai!")
-    print(f"📁 Model tersimpan di: {OUTPUT_PATH}")
-    print("\nCara menggunakan model:")
-    print("1. Copy folder model ke python_backend/xtts/")
-    print("2. Update app.py untuk load model custom")
-    
-except Exception as e:
-    print(f"\n❌ Error during training: {str(e)}")
-    print("\nTroubleshooting:")
-    print("1. Pastikan format metadata.csv benar")
-    print("2. Pastikan semua file audio ada di wavs/")
-    print("3. Cek VRAM GPU (turunkan batch_size jika perlu)")
-    print("4. Gunakan Google Colab jika tidak punya GPU")
+    print("✅ Base model loaded!")
+
+    # ── Validasi Dataset ──────────────────────────────────────────────────────
+    print("\n📊 Preparing Indonesian dataset...")
+    if not os.path.exists(metadata_file):
+        raise FileNotFoundError(f"File {metadata_file} tidak ditemukan!")
+    if not os.path.exists(wavs_path):
+        raise FileNotFoundError(f"Folder {wavs_path} tidak ditemukan!")
+
+    with open(metadata_file, 'r', encoding='utf-8') as f:
+        num_samples = len(f.readlines())
+    print(f"✅ Dataset: {num_samples} samples")
+
+    # ── Bersihkan Transkrip ───────────────────────────────────────────────────
+    print("🧹 Cleaning transcripts with Indonesian Cleaner...")
+    with open(metadata_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line or "|" not in line:
+            continue
+        filename, text = line.split("|", 1)
+        cleaned_text = clean_indonesian_for_xtts(text)
+        cleaned_lines.append(f"{filename}|{cleaned_text}\n")
+
+    with open(metadata_file, 'w', encoding='utf-8') as f:
+        f.writelines(cleaned_lines)
+    print("✅ Transcripts cleaned.")
+
+    # ── Konfigurasi Training ─────────────────────────────────────────────────
+    # Sesuaikan batch_size otomatis dengan VRAM GPU
+    auto_batch = batch_size if vram > 16 else (2 if vram > 8 else 1)
+    auto_grad_accum = 1 if vram > 16 else (2 if vram > 8 else 4)
+
+    training_args = TrainerArgs(
+        epochs=epochs,
+        batch_size=auto_batch,
+        grad_accum_steps=auto_grad_accum,
+        lr=5e-6,
+        save_step=100,
+        save_n_checkpoints=3,
+        save_best_after=100,
+        output_path=output_path,
+        print_step=10,
+        plot_step=100,
+        mixed_precision=True,
+        use_grad_scaler=True,
+    )
+
+    config.languages = ["id"]
+    config.dataset_config = {
+        "formatter": "ljspeech",
+        "meta_file_train": metadata_file,
+        "path": dataset_path,
+        "language": "id"
+    }
+
+    # ── Mulai Training ────────────────────────────────────────────────────────
+    print(f"\n🚀 Starting fine-tuning...")
+    print(f"   Epochs     : {epochs}")
+    print(f"   Batch Size : {auto_batch}")
+    print(f"   Grad Accum : {auto_grad_accum}")
+    print(f"   Device     : {device}")
+    print("=" * 50)
+
+    try:
+        trainer = Trainer(
+            training_args,
+            config,
+            output_path=output_path,
+            model=model,
+            train_samples=None,
+            eval_samples=None
+        )
+        trainer.fit()
+        print("\n✅ Fine-tuning selesai!")
+        return True
+    except Exception as e:
+        print(f"\n❌ Error during training: {str(e)}")
+        return False
+
+
+if __name__ == "__main__":
+    # Jalankan langsung (di RunPod terminal)
+    start_training(
+        dataset_path="/workspace/dataset",
+        output_path="/workspace/output_model",
+        epochs=30
+    )
