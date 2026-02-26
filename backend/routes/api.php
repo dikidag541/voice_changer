@@ -8,16 +8,22 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+// Public routes
+Route::get('/characters', [\App\Http\Controllers\CharacterController::class, 'index']);
+Route::get('/characters/{id}', [\App\Http\Controllers\CharacterController::class, 'show']);
+Route::get('/engine-status', [VoiceChangerController::class, 'engineStatus']);
+Route::get('/balance', [VoiceChangerController::class, 'getBalance']);
+
+// Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/initialize-voice', [VoiceChangerController::class, 'initializeVoice']);
     Route::post('/clone-voice', [VoiceChangerController::class, 'clone']);
     Route::post('/start-training', [VoiceChangerController::class, 'startTraining']);
-    Route::get('/engine-status', [VoiceChangerController::class, 'engineStatus']);
-    
-    // Original SaaS Routes
+    Route::get('/training-status', [VoiceChangerController::class, 'trainingStatus']);
+    Route::get('/list-pods', [VoiceChangerController::class, 'listPods']);
+    Route::post('/terminate-pod', [VoiceChangerController::class, 'terminatePod']);
+
+    // SaaS core routes
     Route::post('/train', [\App\Http\Controllers\VoiceTrainingController::class, 'store']);
     Route::post('/generate', [\App\Http\Controllers\VoiceGenerateController::class, 'generate']);
 });
-
-Route::get('/characters', [\App\Http\Controllers\CharacterController::class, 'index']);
-Route::get('/characters/{id}', [\App\Http\Controllers\CharacterController::class, 'show']);

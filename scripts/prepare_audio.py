@@ -5,7 +5,7 @@ import sys
 
 # Konfigurasi Path
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INPUT_FILE = os.path.join(base_dir, "WhatsApp-Video-2026-02-09-at-20.37.31.wav")
+INPUT_FILE = os.path.join(base_dir, "myvoice.wav")
 OUTPUT_DIR = os.path.join(base_dir, "backend", "storage", "app", "public", "dataset_training")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.join(OUTPUT_DIR, "wavs"), exist_ok=True)

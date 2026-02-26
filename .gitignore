@@ -41,3 +41,4 @@ ai-training-runpod/training/metadata.csv
 .agent/
 .gemini/
 *.log
+*.wav

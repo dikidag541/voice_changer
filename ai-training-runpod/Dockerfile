@@ -1,8 +1,14 @@
-# Gunakan base image dengan CUDA 11.8 untuk GPU RTX 4090
-FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+# Gunakan image CUDA untuk RTX 4090
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
-# Install system dependencies
+# Setup environment
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/workspace/ai-training-worker
+
 RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-dev \
     ffmpeg \
     libsndfile1 \
     git \
@@ -10,21 +16,19 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /workspace
+# Setup workdir
+WORKDIR /workspace/ai-training-worker
 
-# Copy requirements dan install
+# Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # Copy source code
 COPY . .
 
-# Set PYTHONPATH agar import antar module bekerja
-ENV PYTHONPATH=/workspace
-
-# Expose port untuk FastAPI
+# Expose FastAPI port
 EXPOSE 8001
 
-# Jalankan server
-CMD ["python", "-m", "uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8001"]
+# Jalankan server (uvicorn untuk production)
+CMD ["python3", "-m", "uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8001"]

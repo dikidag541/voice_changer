@@ -56,6 +56,7 @@ def transcribe_with_whisper(wavs_dir="wavs", metadata_path="metadata.csv", whisp
         print(f"[{i+1}/{len(files)}] {filename}... ", end="", flush=True)
 
         try:
+<<<<<<< HEAD
             result = model.transcribe(
                 path,
                 language="id",       # Force Indonesian
@@ -76,8 +77,30 @@ def transcribe_with_whisper(wavs_dir="wavs", metadata_path="metadata.csv", whisp
                 error_count += 1
                 print("✗ Teks kosong")
 
+=======
+            with sr.AudioFile(path) as source:
+                audio = r.record(source)
+                # Gunakan Google Recognition (Indonesia)
+                text = r.recognize_google(audio, language="id-ID")
+                
+                # Bersihkan teks
+                text = text.replace("|", "")
+                # ID untuk LJSpeech format adalah nama file TANPA .wav
+                file_id = os.path.splitext(filename)[0]
+                
+                # Format LJSpeech butuh 3 kolom: ID|teks|teks_normal
+                results.append(f"{file_id}|{text}|{text}")
+                success_count += 1
+                print(f"✓ {text[:50]}...")
+        except sr.UnknownValueError:
+            file_id = os.path.splitext(filename)[0]
+            results.append(f"{file_id}|[TIDAK_TERDETEKSI]|[TIDAK_TERDETEKSI]")
+            error_count += 1
+            print("✗ Tidak terdeteksi")
+>>>>>>> teammate/main
         except Exception as e:
-            results.append(f"{filename}|[ERROR]")
+            file_id = os.path.splitext(filename)[0]
+            results.append(f"{file_id}|[ERROR]|[ERROR]")
             error_count += 1
             print(f"✗ Error: {e}")
 
