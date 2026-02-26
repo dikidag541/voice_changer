@@ -64,7 +64,8 @@ class RunpodService
                     { key: "AWS_DEFAULT_REGION", value: "' . env('AWS_DEFAULT_REGION', 'auto') . '" },
                     { key: "AWS_BUCKET", value: "' . env('AWS_BUCKET') . '" },
                     { key: "AWS_ENDPOINT", value: "' . env('AWS_ENDPOINT') . '" },
-                    { key: "AWS_URL", value: "' . env('AWS_URL') . '" }
+                    { key: "AWS_URL", value: "' . env('AWS_URL') . '" },
+                    { key: "RUNPOD_API_KEY", value: "' . env('RUNPOD_API_KEY') . '" }
                   ],
                   dockerArgs: "bash -c \'apt-get update && apt-get install -y ffmpeg git git-lfs && if [ ! -d \"/workspace/voice-changer\" ]; then cd /workspace && git clone --depth 1 -b diki https://github.com/dikidag541/voice_changer voice-changer; else cd /workspace/voice-changer && git pull origin diki; fi && cd /workspace/voice-changer/ai-training-runpod && pip install --no-cache-dir --ignore-installed -r requirements.txt && python3 -m uvicorn api.server:app --host 0.0.0.0 --port 8888\'"
                 }

@@ -6,6 +6,7 @@ import torch
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
+import requests
 from dotenv import load_dotenv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -38,6 +39,28 @@ training_progress = {
     "total_epochs": 0,
     "message": "Waiting for command..."
 }
+
+def terminate_self():
+    """Mematikan Pod sendiri via API RunPod"""
+    api_key = os.getenv("RUNPOD_API_KEY")
+    pod_id = os.getenv("RUNPOD_POD_ID")
+    
+    if not api_key or not pod_id:
+        print("⚠️ [SELF-TERMINATE] Gagal: API_KEY atau POD_ID tidak ditemukan.")
+        return
+
+    print(f"🛑 [SELF-TERMINATE] Menghentikan Pod {pod_id}...")
+    
+    url = f"https://api.runpod.io/graphql?api_key={api_key}"
+    query = f"""
+    mutation {{
+      podTerminate(input: {{ podId: "{pod_id}" }})
+    }}
+    """
+    try:
+        requests.post(url, json={'query': query})
+    except Exception as e:
+        print(f"⚠️ [SELF-TERMINATE] Error: {e}")
 
 def run_training_pipeline(request: TrainingRequest):
     """Pipeline Training Otomatis"""
@@ -128,6 +151,7 @@ def run_training_pipeline(request: TrainingRequest):
             "message": "Training finished successfully!"
         })
         print(f"✅ [PIPELINE] Sesi {training_id} selesai!")
+        terminate_self()
 
     except Exception as e:
         training_progress.update({
@@ -135,6 +159,7 @@ def run_training_pipeline(request: TrainingRequest):
             "message": f"Error: {str(e)}"
         })
         print(f"❌ [PIPELINE] ERROR: {str(e)}")
+        terminate_self()
 
 
 @app.post("/train")
