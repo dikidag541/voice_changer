@@ -1,7 +1,7 @@
 """
-XTTS v2 Fine-Tuning Script - HYPER-SAFETY VERSION
+XTTS v2 Fine-Tuning Script - FINAL SHIELD VERSION
 =================================================
-Dijalankan di RunPod. Fokus pada stabilitas maksimal (1330 samples).
+Dijalankan di RunPod. Fokus pada diagnosa 50% skip & SystemExit.
 """
 
 import os
@@ -10,6 +10,7 @@ import torch
 import torch.serialization
 import traceback
 import wave
+import shutil
 from pathlib import Path
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts, XttsAudioConfig, XttsArgs
@@ -17,8 +18,9 @@ from TTS.tts.configs.shared_configs import BaseDatasetConfig
 from trainer import Trainer, TrainerArgs
 from app.core.indo_cleaner import clean_indonesian_for_xtts
 
-# ── Force Single GPU Environment ──────────────────────────────────────────
+# ── Force Single GPU & Debug Mode ─────────────────────────────────────────
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1" # Biar error CUDA nongol baris ke berapa
 
 # ── Patch torch.load untuk keamanan PyTorch 2.6+ ───────────────────────────
 orig_load = torch.load
@@ -33,8 +35,9 @@ if hasattr(torch.serialization, 'add_safe_globals'):
 
 
 def is_valid_wav(path):
-    """Cek apakah file audio adalah WAV valid dan bisa dibaca."""
+    """Cek apakah file audio adalah WAV valid."""
     try:
+        if os.path.basename(path).startswith("._"): return False # Skip Mac Junk
         with wave.open(path, 'rb') as f:
             return True
     except:
@@ -51,7 +54,7 @@ def download_base_model():
     return model_path
 
 
-def start_training(dataset_path, output_path, epochs=30, batch_size=4):
+def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     os.makedirs(output_path, exist_ok=True)
     
     # 1. CEK DEVICE
@@ -65,10 +68,10 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     config = XttsConfig()
     config.load_json(config_path)
 
-    # 3. CLEAN DATASET & INTENSIVE VALIDATION
+    # 3. CLEAN DATASET & VERBOSE VALIDATION
     metadata_file = os.path.join(dataset_path, "metadata.csv")
     wavs_path = os.path.join(dataset_path, "wavs")
-    print(f"🧹 Validating 1330 samples in: {metadata_file}")
+    print(f"🧹 Validating samples in: {metadata_file}")
     
     if not os.path.exists(metadata_file):
         print(f"❌ ERROR: metadata.csv tidak ditemukan!")
@@ -79,58 +82,67 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
 
     processed_lines = []
     skipped_count = 0
-    for line in lines:
+    
+    print("🔍 [DEBUG] First 5 files check:")
+    for i, line in enumerate(lines):
         parts = line.strip().split("|")
-        if len(parts) < 2: continue
+        if len(parts) < 2: 
+            skipped_count += 1
+            continue
         
-        filename_id = parts[0].replace(".wav", "")
+        # Bersihkan filename dari junk & extension
+        raw_name = parts[0].strip()
+        filename_id = raw_name.replace(".wav", "")
         text = clean_indonesian_for_xtts(parts[1]).strip()
         
-        if not text:
+        if not text or raw_name.startswith("._"):
             skipped_count += 1
             continue
 
         wav_full_path = os.path.join(wavs_path, filename_id + ".wav")
-        
-        # VALIDASI FISIK & HEADER WAV
-        if os.path.exists(wav_full_path) and is_valid_wav(wav_full_path):
+        exists = os.path.exists(wav_full_path)
+        valid = is_valid_wav(wav_full_path) if exists else False
+
+        if i < 5:
+            print(f"   - File: {raw_name} | Exists: {exists} | Valid: {valid}")
+
+        if exists and valid:
             processed_lines.append(f"{filename_id}|{text}|{text}\n")
         else:
             skipped_count += 1
 
     if skipped_count > 0:
-        print(f"⚠️  WARNING: Skip {skipped_count} file (tidak ada, teks kosong, atau corrupt).")
+        print(f"⚠️  WARNING: Skip {skipped_count} samples (Junk/Missing/Corrupt).")
     
     with open(metadata_file, 'w', encoding='utf-8') as f:
         f.writelines(processed_lines)
     
     num_samples = len(processed_lines)
-    print(f"✅ Dataset ready: {num_samples} samples.")
+    print(f"✅ Final Dataset: {num_samples} valid samples.")
     if num_samples == 0:
-        print("❌ ERROR: Tidak ada data valid untuk dilatih!")
+        print("❌ ERROR: Tidak ada data valid sama sekali!")
         return False
 
-    # 4. OPTIMASI CONFIG (Hyper-Safety Mode)
-    config.languages = ["en"] # Proxy EN tetap
-    
-    # KEMBALIKAN EVAL SEDIKIT (1%): Biar mesin gak ngambek nyari data ujian
-    config.eval_split_size = 0.01
+    # 4. CONFIG SETTINGS (Ultimate Stability)
+    config.languages = ["en"]
+    config.eval_split_size = 0.01 # 1% Eval
     
     config.epochs = epochs
-    config.batch_size = 1 # Force 1 untuk stabilitas mutlak
+    config.batch_size = batch_size
     config.grad_acumm_steps = 1
     config.mixed_precision = False
     
-    # MATIKAN SEMUA FITUR YANG BIKIN CRASH
+    # MATIKAN SEMUA YANG BERBAHAYA
     config.num_loader_workers = 0
     config.num_eval_loader_workers = 0
-    config.test_sentences = [] # Jangan generate audio saat startup
+    config.test_sentences = []
+    config.use_weighted_sampler = False # Sering bikin SystemExit kalau dataset aneh
     
     if hasattr(config, "model_args"):
-        config.model_args.gpt_batch_size = 1
+        config.model_args.gpt_batch_size = batch_size
     
     config.lr = 5e-6
-    config.save_step = 500
+    config.save_step = 1000
     config.print_step = 1
     
     dataset_config = BaseDatasetConfig(
@@ -166,8 +178,8 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
                 manager.get_id_by_name = lambda x: 0
 
     # 7. START TRAINER
-    print(f"🚀 Starting training (Hyper-Safety Active)...")
-    training_args = TrainerArgs() # Kosongkan total
+    print(f"🚀 [SHIELD ON] Starting Trainer...")
+    training_args = TrainerArgs()
 
     try:
         trainer = Trainer(
@@ -179,18 +191,16 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
             eval_samples=None
         )
         trainer.fit()
-        print("\n✅ TRAINING SELESAI!")
+        print("\n✅ SUCCESS: Training Completed!")
         return True
     except Exception as e:
-        print(f"\n❌ Error during training: {str(e)}")
+        print(f"\n❌ FATAL ERROR: {str(e)}")
         traceback.print_exc()
         return False
     except SystemExit as e:
-        print(f"\n⚠️ SystemExit DETECTED (Code {e.code if hasattr(e, 'code') else 'Unknown'}):")
-        traceback.print_exc()
-        # Jika SystemExit tapi tanpa traceback, coba debugging manual
-        if not traceback.format_exc().strip() or "NoneType" in traceback.format_exc():
-            print("   (Si mesin mati tanpa alasan jelas. Biasanya CUDA OOM atau DDP error.)")
+        print(f"\n⚠️ CRITICAL SystemExit caught (Code {e.code if hasattr(e, 'code') else 'Unknown'})")
+        # Mencoba paksa print stack trace lagi
+        traceback.print_stack()
         return False
 
 
