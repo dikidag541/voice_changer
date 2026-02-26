@@ -110,18 +110,20 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     config.mixed_precision = False  # Lebih stabil di berbagai GPU
     config.output_path = output_path
     
+    # Step settings (Pindah ke Config)
+    config.save_step = 500
+    config.print_step = 50
+    config.plot_step = 100
+    
     # Optimizer & LR
     config.lr = 5e-6
     config.optimizer = "AdamW"
     config.optimizer_params = {"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2}
 
     training_args = TrainerArgs(
-        save_step=500,
+        # TrainerArgs sekarang sangat minimal di versi terbaru
         save_n_checkpoints=2,
         save_best_after=500,
-        output_path=output_path,
-        print_step=50,
-        plot_step=100,
     )
 
     # Dataset config
