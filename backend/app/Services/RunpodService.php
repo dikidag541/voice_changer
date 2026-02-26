@@ -51,10 +51,10 @@ class RunpodService
                 input: {
                   cloudType: COMMUNITY,
                   gpuCount: 1,
-                  gpuTypeId: "NVIDIA A5000",
+                  gpuTypeId: "NVIDIA RTX A4000",
                   imageName: "runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04",
-                  containerDiskInGb: 20,
-                  volumeInGb: 50,
+                  containerDiskInGb: 10,
+                  volumeInGb: 30,
                   volumeMountPath: "/workspace",
                   ports: "8888/http",
                   name: "' . $name . '",
