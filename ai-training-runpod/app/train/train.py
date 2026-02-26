@@ -99,23 +99,29 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
         f.writelines(cleaned_lines)
     print(f"✅ Dataset cleaned: {len(cleaned_lines)} samples ready.")
 
-    # ── 5. OPTIMASI TRAINING (Auto-Batching) ────────────────────────────────
+    # ── 5. OPTIMASI TRAINING (Pindahkan ke Config) ─────────────────────────
     # Sesuaikan batch_size otomatis dengan VRAM GPU
     auto_batch = batch_size if vram > 16 else (2 if vram > 8 else 1)
-    auto_grad_accum = 1 if vram > 16 else (2 if vram > 8 else 8)
+    auto_grad_accum = 1 if vram > 16 else (4 if vram > 8 else 8)
+
+    config.epochs = epochs
+    config.batch_size = auto_batch
+    config.grad_acumm_steps = auto_grad_accum # Typo 'mm' adalah standar Coqui
+    config.mixed_precision = False  # Lebih stabil di berbagai GPU
+    config.output_path = output_path
+    
+    # Optimizer & LR
+    config.lr = 5e-6
+    config.optimizer = "AdamW"
+    config.optimizer_params = {"betas": [0.9, 0.96], "eps": 1e-8, "weight_decay": 1e-2}
 
     training_args = TrainerArgs(
-        epochs=epochs,
-        batch_size=auto_batch,
-        grad_accum_steps=auto_grad_accum,
-        lr=5e-6,
         save_step=500,
         save_n_checkpoints=2,
         save_best_after=500,
         output_path=output_path,
         print_step=50,
         plot_step=100,
-        mixed_precision=False, # Stable on various GPUs
     )
 
     # Dataset config
