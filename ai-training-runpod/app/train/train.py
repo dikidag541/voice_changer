@@ -100,16 +100,26 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     print(f"✅ Dataset cleaned: {len(cleaned_lines)} samples ready.")
 
     # ── 5. OPTIMASI TRAINING (Pindahkan ke Config) ─────────────────────────
-    # Sesuaikan batch_size otomatis dengan VRAM GPU
-    auto_batch = batch_size if vram > 16 else (2 if vram > 8 else 1)
-    auto_grad_accum = 1 if vram > 16 else (4 if vram > 8 else 8)
+    # PENTING: Untuk dataset sangat kecil (seperti 6 sample), 
+    # jangan pakai grad_accum > 1 karena dia bakal nunggu data yang gak ada.
+    num_samples = len(cleaned_lines)
+    
+    if num_samples < 10:
+        auto_batch = 1
+        auto_grad_accum = 1
+        eval_split = 0
+        print(f"⚠️  Dataset sangat kecil ({num_samples} samples). Pakai mode ultra-small.")
+    else:
+        auto_batch = batch_size if vram > 16 else (2 if vram > 8 else 1)
+        auto_grad_accum = 1 if vram > 16 else (4 if vram > 8 else 8)
+        eval_split = 0.1
 
     config.epochs = epochs
     config.batch_size = auto_batch
     config.grad_acumm_steps = auto_grad_accum # Typo 'mm' adalah standar Coqui
     config.mixed_precision = False
     config.output_path = output_path
-    config.eval_split_size = 0.1
+    config.eval_split_size = eval_split
     
     # Model Args (Penting untuk XTTS)
     if not hasattr(config, "model_args"):
