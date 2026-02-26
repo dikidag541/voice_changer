@@ -102,13 +102,22 @@ def run_training_pipeline(request: TrainingRequest):
         else:
             shutil.copy(request.audio_path, local_raw_file)
 
-        # 2. SPLIT AUDIO
+        # 2. PREPROCESSING (ZIP extraction or Splitting)
         training_progress.update({
             "current_step": "preprocessing",
             "progress_percent": 30,
-            "message": "Splitting audio into segments..."
+            "message": "Extracting or splitting audio..."
         })
-        split_long_audio(input_dir=raw_audio_dir, output_dir=wavs_dir)
+
+        if local_raw_file.lower().endswith(".zip"):
+            import zipfile
+            print(f"📦 [PIPELINE] Extracting ZIP: {local_raw_file}")
+            with zipfile.ZipFile(local_raw_file, 'r') as zip_ref:
+                zip_ref.extractall(wavs_dir)
+            print(f"✅ [PIPELINE] Extraction complete.")
+        else:
+            print(f"✂️ [PIPELINE] Splitting long audio: {local_raw_file}")
+            split_long_audio(input_dir=raw_audio_dir, output_dir=wavs_dir)
 
         # 3. TRANSCRIBE dengan Whisper
         training_progress.update({

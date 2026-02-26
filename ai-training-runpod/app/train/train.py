@@ -72,26 +72,37 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
     num_samples = len(processed_lines)
     print(f"✅ Dataset ready: {num_samples} samples.")
 
-    # 4. OPTIMASI CONFIG (Ultra-Tiny Dataset)
-    # Pakai 'en' sebagai proxy total untuk kestabilan latin tokenizer
-    config.languages = ["en"]
+    # 4. OPTIMASI CONFIG (Dinamis: Dataset Kecil vs Besar)
+    config.languages = ["en"] # Proxy EN tetap dipakai untuk stabilitas
     
-    # Force minimal 1 sample untuk eval jika memungkinkan
-    eval_split_size = 0.2 if num_samples > 2 else 0
+    # Deteksi Mode: Ultra-Small (< 20 klip) vs Standard (>= 20 klip)
+    is_tiny = num_samples < 20
     
+    if is_tiny:
+        auto_batch = 1
+        auto_grad_accum = 1
+        eval_split = 0.2 if num_samples > 1 else 0
+        print(f"⚠️  Mode: ULTRA-SMALL ({num_samples} samples). Batch Size: 1")
+    else:
+        # Untuk dataset besar, kita bisa naikkan batch agar lebih cepat
+        auto_batch = batch_size if vram > 16 else (2 if vram > 8 else 1)
+        auto_grad_accum = 1 if vram > 16 else 2
+        eval_split = 0.1
+        print(f"🚀 Mode: STANDARD ({num_samples} samples). Batch Size: {auto_batch}")
+
     config.epochs = epochs
-    config.batch_size = 1 # Force batch 1 untuk stabilitas A4000
-    config.grad_acumm_steps = 1
-    config.eval_split_size = eval_split_size
+    config.batch_size = auto_batch
+    config.grad_acumm_steps = auto_grad_accum
+    config.eval_split_size = eval_split
     config.mixed_precision = False
     
     if hasattr(config, "model_args"):
-        config.model_args.gpt_batch_size = 1
+        config.model_args.gpt_batch_size = auto_batch
     
     # Defaults
     config.lr = 5e-6
-    config.save_step = 1000 # Kita bakal selesai jauh sebelum ini, tapi biar gak spam save
-    config.print_step = 1
+    config.save_step = 250 if not is_tiny else 1000
+    config.print_step = 10 if not is_tiny else 1
     config.plot_step = 100
     
     dataset_config = BaseDatasetConfig(
