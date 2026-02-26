@@ -158,10 +158,7 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=4):
 
     # 7. START TRAINER
     print(f"🚀 Starting training (Proxy Lang: EN)...")
-    training_args = TrainerArgs(
-        dashboard_logger=None,
-        project_name="xtts_fine_tuning"
-    )
+    training_args = TrainerArgs()
 
     try:
         trainer = Trainer(
