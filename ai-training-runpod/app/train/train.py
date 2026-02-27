@@ -17,21 +17,25 @@ from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts, XttsAudioConfig, XttsArgs
 from TTS.tts.configs.shared_configs import BaseDatasetConfig
 from trainer import Trainer, TrainerArgs
+from TTS.tts.datasets import load_tts_samples
 from app.core.indo_cleaner import clean_indonesian_for_xtts
 
 # ── 🚨 MONKEY-PATCH sys.exit 🚨 ──────────────────────────────────────────
 orig_exit = sys.exit
 def patched_exit(code=None):
-    print(f"\n🛑 [PIPELINE] sys.exit({code or 0}) dipanggil. Stack Trace:")
-    traceback.print_stack()
+    print(f"\n🛑 [PIPELINE] sys.exit({code if code is not None else 0}) dipanggil.")
+    message = "".join(traceback.format_stack())
+    print(f"--- TRACEBACK BEGIN ---\n{message}\n--- TRACEBACK END ---")
     orig_exit(code)
 sys.exit = patched_exit
 
 # ── Force Single GPU ──────────────────────────────────────────────────────
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["USE_ACCELERATE"] = "0"
 os.environ["WORLD_SIZE"] = "1"
 os.environ["RANK"] = "0"
+os.environ["MASTER_ADDR"] = "localhost"
+os.environ["MASTER_PORT"] = "12355"
 
 # ── Patch torch.load ──────────────────────────────────────────────────────
 orig_load = torch.load
@@ -188,7 +192,22 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
 
     # 7. START TRAINER (Constructor-safe version)
     print(f"🚀 [TRIPLE SHIELD ON] Starting Trainer...")
-    training_args = TrainerArgs()
+    training_args = TrainerArgs(
+        use_ddp=False,
+        use_cuda=True,
+        use_accelerate=False,
+        dashboard_logger=None,  # Matikan logger eksternal (WandB/Tensorboard)
+    )
+
+    # 8. LOAD SAMPLES MANUALLY (Red Shield Check)
+    print(f"📦 Loading TTS samples from {dataset_path}...")
+    train_samples, eval_samples = load_tts_samples(
+        dataset_config,
+        eval_split=True,
+        eval_split_max_size=None,
+        eval_split_size=config.eval_split_size,
+    )
+    print(f"✅ Loaded {len(train_samples)} training and {len(eval_samples)} evaluation samples.")
 
     try:
         trainer = Trainer(
@@ -196,8 +215,8 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
             config,
             output_path=output_path,
             model=model,
-            train_samples=None,
-            eval_samples=None
+            train_samples=train_samples,
+            eval_samples=eval_samples
         )
         trainer.fit()
         print("\n✅ SUCCESS: Training Completed!")
