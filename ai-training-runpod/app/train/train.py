@@ -177,13 +177,22 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     if hasattr(model, "tokenizer") and not hasattr(model.tokenizer, "text_to_ids"):
         model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
 
+    # Patch Speaker/Language Manager (Sering hilang di versi 0.22.0 saat training)
+    for manager_name in ["speaker_manager", "language_manager"]:
+        manager = getattr(model, manager_name, None)
+        if manager is not None:
+            if not hasattr(manager, "save_ids_to_file"):
+                manager.save_ids_to_file = lambda x: None
+            if not hasattr(manager, "get_id_by_name"):
+                manager.get_id_by_name = lambda x: 0
+
     # 7. START TRAINER (Constructor-safe version)
     print(f"🚀 [TRIPLE SHIELD ON] Starting Trainer...")
     training_args = TrainerArgs()
 
     try:
         trainer = Trainer(
-            training_args,
+            training_args,  
             config,
             output_path=output_path,
             model=model,
