@@ -203,8 +203,9 @@ class VoiceChangerController extends Controller
             $cloudPath = "training/raw/" . $filename;
             Log::info("☁️ [STEP 1] Mengunggah ke R2: $cloudPath");
             
-            // Naikkan memory_limit ke Unlimited untuk upload file raksasa (1.42GB+)
+            // Naikkan memory_limit ke Unlimited dan timeout ke 1 jam untuk upload file raksasa (1.42GB+)
             ini_set('memory_limit', '-1');
+            set_time_limit(3600);
             
             $uploaded = $this->storage->uploadToCloud($localPath, $cloudPath);
             

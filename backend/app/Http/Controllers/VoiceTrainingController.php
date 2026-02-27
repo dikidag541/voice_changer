@@ -24,6 +24,7 @@ class VoiceTrainingController extends Controller
     public function store(Request $request)
     {
         ini_set('memory_limit', '-1');
+        set_time_limit(3600);
         $request->validate([
             'audio'      => 'required|file|mimes:wav,mp3,m4a,zip|max:2048000', // Support ZIP & 2GB
             'model_name' => 'nullable|string',
