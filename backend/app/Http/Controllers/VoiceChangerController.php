@@ -30,9 +30,9 @@ class VoiceChangerController extends Controller
      */
     public function initializeVoice(Request $request)
     {
-        ini_set('memory_limit', '1024M');
+        ini_set('memory_limit', '-1');
         $request->validate([
-            'audio' => 'required|file|max:524288', // 512MB
+            'audio' => 'required|file|max:2048000', // 2GB
         ]);
 
         $audio = $request->file('audio');
@@ -84,7 +84,7 @@ class VoiceChangerController extends Controller
         $request->validate([
             'text' => 'required|string|max:500',
             'speaker_id' => 'nullable|string', // ID dari Step 1
-            'audio' => 'nullable|file|max:524288', // Support fallback upload langsung
+            'audio' => 'nullable|file|max:2048000', // Support fallback upload langsung
             'speed' => 'nullable|numeric|min:0.5|max:2.0',
         ]);
 
@@ -203,8 +203,8 @@ class VoiceChangerController extends Controller
             $cloudPath = "training/raw/" . $filename;
             Log::info("☁️ [STEP 1] Mengunggah ke R2: $cloudPath");
             
-            // Naikkan memory_limit khusus untuk upload file raksasa (1.42GB+)
-            ini_set('memory_limit', '2048M');
+            // Naikkan memory_limit ke Unlimited untuk upload file raksasa (1.42GB+)
+            ini_set('memory_limit', '-1');
             
             $uploaded = $this->storage->uploadToCloud($localPath, $cloudPath);
             
