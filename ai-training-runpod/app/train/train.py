@@ -170,15 +170,12 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     if hasattr(model, "tokenizer") and not hasattr(model.tokenizer, "text_to_ids"):
         model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
 
-    # 7. START TRAINER (Explicit Anti-DDP)
+    # 7. START TRAINER (Simplified for Stability)
     print(f"🚀 [DEBUGGER ON] Starting Trainer...")
     training_args = TrainerArgs(
-        gpu=0,
-        use_cuda=True,
         run_name="finetune_voice",
         project_name="xtts_finetune",
         dashboard_logger="tensorboard",
-        disable_distributed_training=True # Paksa matiin DDP
     )
 
     try:
