@@ -40,7 +40,13 @@ class VoiceTrainingController extends Controller
             // 2. Upload ke Cloudflare R2
             $cloudPath = "training/raw/{$userId}/" . time() . "_" . $audioFile->getClientOriginalName();
             Log::info("📤 Uploading audio to R2: {$cloudPath}");
-            $this->storage->uploadToCloud($fullLocalPath, $cloudPath);
+            
+            // Streaming safe upload
+            $uploaded = $this->storage->uploadToCloud($fullLocalPath, $cloudPath);
+            
+            if (!$uploaded) {
+                throw new \Exception("Gagal mengunggah dataset ke R2.");
+            }
 
             // 3. Trigger training di RunPod
             Log::info("🚀 Triggering RunPod training for User {$userId}");

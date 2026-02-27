@@ -202,7 +202,15 @@ class VoiceChangerController extends Controller
             // 2. UPLOAD KE CLOUDFLARE R2
             $cloudPath = "training/raw/" . $filename;
             Log::info("☁️ [STEP 1] Mengunggah ke R2: $cloudPath");
-            $this->storage->uploadToCloud($localPath, $cloudPath);
+            
+            // Naikkan memory_limit khusus untuk upload file raksasa (1.42GB+)
+            ini_set('memory_limit', '2048M');
+            
+            $uploaded = $this->storage->uploadToCloud($localPath, $cloudPath);
+            
+            if (!$uploaded) {
+                throw new \Exception("Gagal mengunggah dataset ke R2 Cloud Storage. Pastikan koneksi internet stabil.");
+            }
 
             // 3. SEWA GPU RTX 4090 (On-Demand)
             Log::info("🎮 [STEP 2] Memerintah RunPod untuk menyewa RTX 4090...");

@@ -12,7 +12,13 @@ class StorageService
     public function uploadToCloud($localPath, $cloudPath)
     {
         $disk = config('filesystems.disks.s3.key') ? 's3' : 'public';
-        return Storage::disk($disk)->put($cloudPath, file_get_contents($localPath));
+        
+        // Pisahkan directory dan filename
+        $dir = dirname($cloudPath);
+        $filename = basename($cloudPath);
+
+        // putFileAs mendukung streaming (tidak makan RAM meski file 1.42GB)
+        return Storage::disk($disk)->putFileAs($dir, new \Illuminate\Http\File($localPath), $filename);
     }
 
     public function getPresignedUrl($path)
