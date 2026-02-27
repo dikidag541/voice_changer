@@ -177,12 +177,9 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     if hasattr(model, "tokenizer") and not hasattr(model.tokenizer, "text_to_ids"):
         model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
 
-    # 7. START TRAINER
+    # 7. START TRAINER (Constructor-safe version)
     print(f"🚀 [TRIPLE SHIELD ON] Starting Trainer...")
-    training_args = TrainerArgs(
-        run_name="finetune_voice",
-        project_name="xtts_finetune",
-    )
+    training_args = TrainerArgs()
 
     try:
         trainer = Trainer(
