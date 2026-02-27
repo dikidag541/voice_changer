@@ -1,7 +1,7 @@
 """
-XTTS v2 Fine-Tuning Script - BLACK BOX DEBUGGER
-===============================================
-Dijalankan di RunPod. Fokus pada membongkar 'SystemExit' misterius.
+XTTS v2 Fine-Tuning Script - TRIPLE SHIELD VERSION
+==================================================
+Dijalankan di RunPod. Fokus pada stabilitas maksimal & diagnosa.
 """
 
 import os
@@ -11,6 +11,7 @@ import torch.serialization
 import traceback
 import wave
 import shutil
+import gc
 from pathlib import Path
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts, XttsAudioConfig, XttsArgs
@@ -19,10 +20,9 @@ from trainer import Trainer, TrainerArgs
 from app.core.indo_cleaner import clean_indonesian_for_xtts
 
 # ── 🚨 MONKEY-PATCH sys.exit 🚨 ──────────────────────────────────────────
-# Biar tahu siapa yang manggil kill-switch
 orig_exit = sys.exit
 def patched_exit(code=None):
-    print(f"\n🛑 [STOP] sys.exit({code}) DIPANGGIL OLEH:")
+    print(f"\n🛑 [PIPELINE] sys.exit({code or 0}) dipanggil. Stack Trace:")
     traceback.print_stack()
     orig_exit(code)
 sys.exit = patched_exit
@@ -32,10 +32,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["WORLD_SIZE"] = "1"
 os.environ["RANK"] = "0"
-os.environ["MASTER_ADDR"] = "localhost"
-os.environ["MASTER_PORT"] = "12355"
 
-# ── Patch torch.load untuk keamanan ───────────────────────────────────────
+# ── Patch torch.load ──────────────────────────────────────────────────────
 orig_load = torch.load
 def patched_load(*args, **kwargs):
     if 'weights_only' not in kwargs:
@@ -69,16 +67,22 @@ def download_base_model():
 def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     os.makedirs(output_path, exist_ok=True)
     
+    # 0. CLEAN VRAM
+    gc.collect()
+    torch.cuda.empty_cache()
+    
+    # 1. CEK DEVICE
     device = "cuda" if torch.cuda.is_available() else "cpu"
     vram = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3) if device == "cuda" else 0
-    print(f"🖥️  Device: {device} | VRAM: {vram:.2f} GB")
+    print(f"🖥\ufe0f  Device: {device} | VRAM: {vram:.2f} GB")
 
+    # 2. LOAD CONFIG
     model_dir = download_base_model()
     config_path = os.path.join(model_dir, "config.json")
     config = XttsConfig()
     config.load_json(config_path)
 
-    # 3. CLEAN DATASET (Sudah terbukti sukses nge-filter junk Mac)
+    # 3. CLEAN DATASET (Strict Verification)
     metadata_file = os.path.join(dataset_path, "metadata.csv")
     wavs_path = os.path.join(dataset_path, "wavs")
     print(f"🧹 Validating samples in: {metadata_file}")
@@ -93,28 +97,28 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     processed_lines = []
     skipped_count = 0
     
-    for i, line in enumerate(lines):
+    for line in lines:
         parts = line.strip().split("|")
         if len(parts) < 2: 
             skipped_count += 1
             continue
         
         raw_name = parts[0].strip()
-        filename_id = raw_name.replace(".wav", "")
+        # Pastikan kita cari file audio yang benar-benar ada
+        filename = raw_name if raw_name.endswith(".wav") else raw_name + ".wav"
         text = clean_indonesian_for_xtts(parts[1]).strip()
         
-        if not text or raw_name.startswith("._"):
+        if not text or filename.startswith("._"):
             skipped_count += 1
             continue
 
-        # Gunakan path absolut untuk verifikasi
-        wav_full_path = os.path.abspath(os.path.join(wavs_path, filename_id + ".wav"))
-        exists = os.path.exists(wav_full_path)
-        valid = is_valid_wav(wav_full_path) if exists else False
-
-        if exists and valid:
-            # XTTS format: filename|text|text
-            processed_lines.append(f"{filename_id}.wav|{text}|{text}\n")
+        wav_full_path = os.path.abspath(os.path.join(wavs_path, filename))
+        
+        if os.path.exists(wav_full_path) and is_valid_wav(wav_full_path):
+            # Penting: LJSpeech mengharapkan: ID|Transcript|Transcript
+            # Dan file harus ada di folder 'wavs/ID.wav'
+            file_id = filename.replace(".wav", "")
+            processed_lines.append(f"{file_id}|{text}|{text}\n")
         else:
             skipped_count += 1
 
@@ -125,18 +129,21 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
         f.writelines(processed_lines)
     
     num_samples = len(processed_lines)
-    print(f"✅ Dataset: {num_samples} valid samples.")
-    if num_samples == 0:
-        print("❌ ERROR: Tidak ada data valid sama sekali!")
+    print(f"✅ Final Dataset: {num_samples} valid samples.")
+    if num_samples < 5:
+        print(f"❌ ERROR: Minimal 5 data valid diperlukan, hanya ada {num_samples}.")
         return False
 
-    # 4. CONFIG SETTINGS
+    # 4. CONFIG SETTINGS (Ultimate Safety)
     config.languages = ["en"]
-    config.eval_split_size = 0.01
+    # Gunakan integer untuk eval_split_size jika dataset kecil (<1000)
+    config.eval_split_size = 8 
+    
     config.epochs = epochs
     config.batch_size = batch_size
     config.grad_acumm_steps = 1
     config.mixed_precision = False
+    
     config.num_loader_workers = 0
     config.num_eval_loader_workers = 0
     config.test_sentences = []
@@ -146,8 +153,8 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
         config.model_args.gpt_batch_size = batch_size
     
     config.lr = 5e-6
-    config.save_step = 1000
-    config.print_step = 1
+    config.save_step = 500
+    config.print_step = 10
     
     dataset_config = BaseDatasetConfig(
         formatter="ljspeech",
@@ -170,12 +177,11 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     if hasattr(model, "tokenizer") and not hasattr(model.tokenizer, "text_to_ids"):
         model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
 
-    # 7. START TRAINER (Simplified for Stability)
-    print(f"🚀 [DEBUGGER ON] Starting Trainer...")
+    # 7. START TRAINER
+    print(f"🚀 [TRIPLE SHIELD ON] Starting Trainer...")
     training_args = TrainerArgs(
         run_name="finetune_voice",
         project_name="xtts_finetune",
-        dashboard_logger="tensorboard",
     )
 
     try:
@@ -191,12 +197,11 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
         print("\n✅ SUCCESS: Training Completed!")
         return True
     except Exception as e:
-        print(f"\n❌ FATAL ERROR: {str(e)}")
+        print(f"\n❌ [PIPELINE] FATAL ERROR: {str(e)}")
         traceback.print_exc()
         return False
     except SystemExit as e:
-        # Pengecekan monkey-patch tadi harusnya sudah print trace duluan
-        print(f"\n⚠️ SystemExit caught (Code {e.code})")
+        print(f"\n⚠️ SystemExit caught (Code {e.code if hasattr(e, 'code') else 'Unknown'})")
         return False
 
 
