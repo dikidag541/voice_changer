@@ -1,7 +1,7 @@
 """
-XTTS v2 Fine-Tuning Script - FINAL SHIELD VERSION
-=================================================
-Dijalankan di RunPod. Fokus pada diagnosa 50% skip & SystemExit.
+XTTS v2 Fine-Tuning Script - BLACK BOX DEBUGGER
+===============================================
+Dijalankan di RunPod. Fokus pada membongkar 'SystemExit' misterius.
 """
 
 import os
@@ -18,11 +18,24 @@ from TTS.tts.configs.shared_configs import BaseDatasetConfig
 from trainer import Trainer, TrainerArgs
 from app.core.indo_cleaner import clean_indonesian_for_xtts
 
-# ── Force Single GPU & Debug Mode ─────────────────────────────────────────
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1" # Biar error CUDA nongol baris ke berapa
+# ── 🚨 MONKEY-PATCH sys.exit 🚨 ──────────────────────────────────────────
+# Biar tahu siapa yang manggil kill-switch
+orig_exit = sys.exit
+def patched_exit(code=None):
+    print(f"\n🛑 [STOP] sys.exit({code}) DIPANGGIL OLEH:")
+    traceback.print_stack()
+    orig_exit(code)
+sys.exit = patched_exit
 
-# ── Patch torch.load untuk keamanan PyTorch 2.6+ ───────────────────────────
+# ── Force Single GPU ──────────────────────────────────────────────────────
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["WORLD_SIZE"] = "1"
+os.environ["RANK"] = "0"
+os.environ["MASTER_ADDR"] = "localhost"
+os.environ["MASTER_PORT"] = "12355"
+
+# ── Patch torch.load untuk keamanan ───────────────────────────────────────
 orig_load = torch.load
 def patched_load(*args, **kwargs):
     if 'weights_only' not in kwargs:
@@ -35,9 +48,8 @@ if hasattr(torch.serialization, 'add_safe_globals'):
 
 
 def is_valid_wav(path):
-    """Cek apakah file audio adalah WAV valid."""
     try:
-        if os.path.basename(path).startswith("._"): return False # Skip Mac Junk
+        if os.path.basename(path).startswith("._"): return False
         with wave.open(path, 'rb') as f:
             return True
     except:
@@ -57,18 +69,16 @@ def download_base_model():
 def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     os.makedirs(output_path, exist_ok=True)
     
-    # 1. CEK DEVICE
     device = "cuda" if torch.cuda.is_available() else "cpu"
     vram = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3) if device == "cuda" else 0
     print(f"🖥️  Device: {device} | VRAM: {vram:.2f} GB")
 
-    # 2. LOAD CONFIG
     model_dir = download_base_model()
     config_path = os.path.join(model_dir, "config.json")
     config = XttsConfig()
     config.load_json(config_path)
 
-    # 3. CLEAN DATASET & VERBOSE VALIDATION
+    # 3. CLEAN DATASET (Sudah terbukti sukses nge-filter junk Mac)
     metadata_file = os.path.join(dataset_path, "metadata.csv")
     wavs_path = os.path.join(dataset_path, "wavs")
     print(f"🧹 Validating samples in: {metadata_file}")
@@ -83,14 +93,12 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     processed_lines = []
     skipped_count = 0
     
-    print("🔍 [DEBUG] First 5 files check:")
     for i, line in enumerate(lines):
         parts = line.strip().split("|")
         if len(parts) < 2: 
             skipped_count += 1
             continue
         
-        # Bersihkan filename dari junk & extension
         raw_name = parts[0].strip()
         filename_id = raw_name.replace(".wav", "")
         text = clean_indonesian_for_xtts(parts[1]).strip()
@@ -99,15 +107,14 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
             skipped_count += 1
             continue
 
-        wav_full_path = os.path.join(wavs_path, filename_id + ".wav")
+        # Gunakan path absolut untuk verifikasi
+        wav_full_path = os.path.abspath(os.path.join(wavs_path, filename_id + ".wav"))
         exists = os.path.exists(wav_full_path)
         valid = is_valid_wav(wav_full_path) if exists else False
 
-        if i < 5:
-            print(f"   - File: {raw_name} | Exists: {exists} | Valid: {valid}")
-
         if exists and valid:
-            processed_lines.append(f"{filename_id}|{text}|{text}\n")
+            # XTTS format: filename|text|text
+            processed_lines.append(f"{filename_id}.wav|{text}|{text}\n")
         else:
             skipped_count += 1
 
@@ -118,25 +125,22 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
         f.writelines(processed_lines)
     
     num_samples = len(processed_lines)
-    print(f"✅ Final Dataset: {num_samples} valid samples.")
+    print(f"✅ Dataset: {num_samples} valid samples.")
     if num_samples == 0:
         print("❌ ERROR: Tidak ada data valid sama sekali!")
         return False
 
-    # 4. CONFIG SETTINGS (Ultimate Stability)
+    # 4. CONFIG SETTINGS
     config.languages = ["en"]
-    config.eval_split_size = 0.01 # 1% Eval
-    
+    config.eval_split_size = 0.01
     config.epochs = epochs
     config.batch_size = batch_size
     config.grad_acumm_steps = 1
     config.mixed_precision = False
-    
-    # MATIKAN SEMUA YANG BERBAHAYA
     config.num_loader_workers = 0
     config.num_eval_loader_workers = 0
     config.test_sentences = []
-    config.use_weighted_sampler = False # Sering bikin SystemExit kalau dataset aneh
+    config.use_weighted_sampler = False
     
     if hasattr(config, "model_args"):
         config.model_args.gpt_batch_size = batch_size
@@ -163,23 +167,19 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     if not hasattr(model, "get_criterion"):
         model.get_criterion = lambda: torch.nn.L1Loss()
     
-    if hasattr(model, "tokenizer"):
-        if not hasattr(model.tokenizer, "text_to_ids"):
-            model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
-        if not hasattr(model.tokenizer, "print_logs"):
-            model.tokenizer.print_logs = lambda x: None
+    if hasattr(model, "tokenizer") and not hasattr(model.tokenizer, "text_to_ids"):
+        model.tokenizer.text_to_ids = lambda x: model.tokenizer.encode(x, lang="en")
 
-    for manager_name in ["speaker_manager", "language_manager"]:
-        manager = getattr(model, manager_name, None)
-        if manager is not None:
-            if not hasattr(manager, "save_ids_to_file"):
-                manager.save_ids_to_file = lambda x: None
-            if not hasattr(manager, "get_id_by_name"):
-                manager.get_id_by_name = lambda x: 0
-
-    # 7. START TRAINER
-    print(f"🚀 [SHIELD ON] Starting Trainer...")
-    training_args = TrainerArgs()
+    # 7. START TRAINER (Explicit Anti-DDP)
+    print(f"🚀 [DEBUGGER ON] Starting Trainer...")
+    training_args = TrainerArgs(
+        gpu=0,
+        use_cuda=True,
+        run_name="finetune_voice",
+        project_name="xtts_finetune",
+        dashboard_logger="tensorboard",
+        disable_distributed_training=True # Paksa matiin DDP
+    )
 
     try:
         trainer = Trainer(
@@ -198,9 +198,8 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
         traceback.print_exc()
         return False
     except SystemExit as e:
-        print(f"\n⚠️ CRITICAL SystemExit caught (Code {e.code if hasattr(e, 'code') else 'Unknown'})")
-        # Mencoba paksa print stack trace lagi
-        traceback.print_stack()
+        # Pengecekan monkey-patch tadi harusnya sudah print trace duluan
+        print(f"\n⚠️ SystemExit caught (Code {e.code})")
         return False
 
 
