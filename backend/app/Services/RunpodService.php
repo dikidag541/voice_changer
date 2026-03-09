@@ -119,8 +119,8 @@ class RunpodService
             }
 
             $errorMsg = json_encode($data['errors'] ?? $data);
-            if (str_contains($errorMsg, 'SUPPLY_CONSTRAINT')) {
-                Log::warning("⚠️ GPU $gpu Out of Stock, mencoba tipe lain...");
+            if (str_contains($errorMsg, 'SUPPLY_CONSTRAINT') || str_contains($errorMsg, 'resources to deploy')) {
+                Log::warning("⚠️ GPU $gpu tidak tersedia/penuh, mencoba tipe lain...");
                 continue;
             }
 
