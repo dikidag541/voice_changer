@@ -141,12 +141,12 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     # 4. CONFIG SETTINGS (Ultimate Safety)
     config.languages = ["en"]
     # Gunakan integer untuk eval_split_size jika dataset kecil (<1000)
-    config.eval_split_size = 8 
+    config.eval_split_size = 16 
     
     config.epochs = epochs
     config.batch_size = batch_size
     config.grad_acumm_steps = 1
-    config.mixed_precision = False
+    config.mixed_precision = True
     
     config.num_loader_workers = 0
     config.num_eval_loader_workers = 0
@@ -156,7 +156,7 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     if hasattr(config, "model_args"):
         config.model_args.gpt_batch_size = batch_size
     
-    config.lr = 5e-6
+    config.lr = 1e-5
     config.save_step = 500
     config.print_step = 10
     
@@ -193,10 +193,13 @@ def start_training(dataset_path, output_path, epochs=30, batch_size=2):
     # 7. START TRAINER (Constructor-safe version)
     print(f"🚀 [TRIPLE SHIELD ON] Starting Trainer...")
     training_args = TrainerArgs(
+        restore_path=None,
+        project_name="xtts_v2_finetuning",
+        run_name="run",
+        output_path=output_path,
         use_ddp=False,
-        use_cuda=True,
         use_accelerate=False,
-        dashboard_logger=None,  # Matikan logger eksternal (WandB/Tensorboard)
+        dashboard_logger=None,
     )
 
     # 8. LOAD SAMPLES MANUALLY (Red Shield Check)

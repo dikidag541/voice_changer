@@ -13,7 +13,12 @@ image = (
         "librosa",
         "soundfile",
         "boto3",
-        "python-dotenv"
+        "python-dotenv",
+        "fairseq",
+        "praat-parselmouth",
+        "pyworld",
+        "faiss-cpu",
+        "scipy"
     )
 )
 
@@ -49,7 +54,7 @@ class XTTSGenerator:
         print("✅ Base Model Loaded.")
 
     @modal.method()
-    def generate_voice(self, text, user_model_path=None, speaker_wav_path=None, speed=1.0):
+    def generate_voice(self, text, user_model_path=None, speaker_wav_path=None, speed=1.0, rvc_model_path=None):
         from services.s3_manager import S3Manager
         import tempfile
         
@@ -71,6 +76,16 @@ class XTTSGenerator:
             local_speaker_path = f"/tmp/{os.path.basename(speaker_wav_path)}"
             s3.s3.download_file(s3.bucket, speaker_wav_path, local_speaker_path)
 
+        # 2.5 Persiapkan RVC Model (Jika diberikan)
+        local_rvc_path = None
+        if rvc_model_path:
+            s3 = S3Manager()
+            # Asumsikan rvc_model_path adalah path di S3
+            local_rvc_path = f"/root/models/{os.path.basename(rvc_model_path)}"
+            if not os.path.exists(local_rvc_path):
+                print(f"📥 Downloading RVC Model: {rvc_model_path}...")
+                s3.s3.download_file(s3.bucket, rvc_model_path, local_rvc_path)
+
         # 3. Inference
         print(f"🎙️ Generating voice for: {text[:50]}...")
         outputs = self.model.synthesize(
@@ -81,12 +96,28 @@ class XTTSGenerator:
             speed=speed
         )
         
+        # 4. Post-Processing dengan RVC (Jika ada model RVC)
+        rvc_output_path = "/tmp/rvc_output.wav"
+        
+        if local_rvc_path and os.path.exists(local_rvc_path):
+            from app.post_process.rvc_infer import RVCInferencer
+            rvc = RVCInferencer()
+            # Simpan dulu hasil XTTS ke file temporary
+            xtts_temp = "/tmp/xtts_temp.wav"
+            sf.write(xtts_temp, outputs['wav'], 24000)
+            
+            # Lakukan konversi
+            rvc.convert(local_rvc_path, xtts_temp, rvc_output_path)
+            final_wav, _ = librosa.load(rvc_output_path, sr=24000)
+        else:
+            final_wav = outputs['wav']
+        
         # Return binary audio data
         import io
         import soundfile as sf
         
         byte_io = io.BytesIO()
-        sf.write(byte_io, outputs['wav'], 24000, format='WAV')
+        sf.write(byte_io, final_wav, 24000, format='WAV')
         byte_io.seek(0)
         
         return byte_io.read()

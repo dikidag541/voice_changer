@@ -83,14 +83,16 @@ class VoiceChangerController extends Controller
         // Validasi input
         $request->validate([
             'text' => 'required|string|max:500',
-            'speaker_id' => 'nullable|string', // ID dari Step 1
-            'audio' => 'nullable|file|max:2048000', // Support fallback upload langsung
+            'speaker_id' => 'nullable|string', 
+            'audio' => 'nullable|file|max:2048000',
             'speed' => 'nullable|numeric|min:0.5|max:2.0',
+            'rvc_model' => 'nullable|string', // Parameter baru untuk RVC
         ]);
 
         $text = $request->input('text');
         $speakerId = $request->input('speaker_id');
         $speed = $request->input('speed', 1.0);
+        $rvcModel = $request->input('rvc_model');
         $userId = Auth::check() ? Auth::id() : null;
 
         // Simpan data transaksi ke database (Opsional jika DB belum siap)
@@ -100,6 +102,7 @@ class VoiceChangerController extends Controller
                 'user_id' => $userId,
                 'input_text' => $text,
                 'reference_audio_path' => $request->hasFile('audio') ? $request->file('audio')->store('references', 'public') : 'using_cached_speaker',
+                'rvc_model' => $rvcModel, // Simpan histori RVC
                 'status' => 'processing',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -114,7 +117,8 @@ class VoiceChangerController extends Controller
             $postData = [
                 'text' => $text,
                 'speed' => $speed,
-                'speaker_id' => $speakerId
+                'speaker_id' => $speakerId,
+                'rvc_model' => $rvcModel
             ];
 
             $requestChain = Http::timeout(300);

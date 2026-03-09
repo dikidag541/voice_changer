@@ -69,8 +69,8 @@ def split_long_audio(input_dir="raw_audio", output_dir="wavs"):
                 # Normalize audio (volume konsisten)
                 chunk = chunk.normalize()
                 
-                # Convert to 22050Hz mono (requirement XTTS)
-                chunk = chunk.set_frame_rate(22050)
+                # Convert to 24000Hz mono (requirement XTTS)
+                chunk = chunk.set_frame_rate(24000)
                 chunk = chunk.set_channels(1)
                 
                 # Generate filename

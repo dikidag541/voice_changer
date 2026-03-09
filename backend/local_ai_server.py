@@ -20,7 +20,7 @@ def generate_silent_wav():
     with wave.open(output, 'wb') as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
-        wav_file.setframerate(22050)
+        wav_file.setframerate(24000)
         # 1 detik silence
         wav_file.writeframes(b'\x00' * 44100)
     output.seek(0)

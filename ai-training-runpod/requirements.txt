@@ -16,3 +16,8 @@ transformers==4.33.1
 tokenizers
 accelerate
 requests
+fairseq
+praat-parselmouth
+pyworld
+faiss-cpu
+scipy
