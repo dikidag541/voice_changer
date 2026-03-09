@@ -16,7 +16,7 @@ transformers==4.33.1
 tokenizers
 accelerate
 requests
-fairseq
+# fairseq dihapus karena bug PyPI, diinstal via git di dockerArgs
 praat-parselmouth
 pyworld
 faiss-cpu
