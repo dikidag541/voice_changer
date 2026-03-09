@@ -2,8 +2,8 @@ Cython
 setuptools
 TTS==0.22.0
 trainer
-torch
-torchaudio
+# torch
+# torchaudio
 openai-whisper
 pydub
 librosa
