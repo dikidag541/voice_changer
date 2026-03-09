@@ -18,17 +18,66 @@ from services.local_storage_manager import LocalStorageManager
 from app.preprocessing.split_audio import split_long_audio
 from app.preprocessing.make_metadata import transcribe_with_whisper
 from app.train.train import start_training
+from app.post_process.rvc_infer import RVCInferencer
+import soundfile as sf
+import librosa
 
 app = FastAPI(title="Runpod AI Training Worker")
 
 s3 = S3Manager()
 local_storage = LocalStorageManager()
 
+class XTTSInference:
+    def __init__(self):
+        self.model = None
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    def load_model(self, model_dir=None):
+        from TTS.tts.configs.xtts_config import XttsConfig
+        from TTS.tts.models.xtts import Xtts
+        from TTS.utils.manage import ModelManager
+
+        if self.model is not None:
+            return
+
+        print("📦 Loading XTTS v2 for Inference...")
+        if model_dir is None:
+            model_name = "tts_models/multilingual/multi-dataset/xtts_v2"
+            ModelManager().download_model(model_name)
+            model_dir = os.path.join(os.path.expanduser("~"), ".local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2/")
+        
+        config = XttsConfig()
+        config.load_json(os.path.join(model_dir, "config.json"))
+        self.model = Xtts.init_from_config(config)
+        self.model.load_checkpoint(checkpoint_dir=model_dir, use_deepspeed=False)
+        self.model.to(self.device)
+        print("✅ XTTS Inference Ready.")
+
+    def generate(self, text, speaker_wav, language="id", speed=1.0):
+        if self.model is None:
+            self.load_model()
+        
+        return self.model.synthesize(
+            text,
+            config=self.model.config,
+            speaker_wav=speaker_wav,
+            language=language,
+            speed=speed
+        )
+
+inference_engine = XTTSInference()
+
 class TrainingRequest(BaseModel):
     user_id: str
     audio_path: str
     model_name: Optional[str] = "custom_voice"
     epochs: Optional[int] = 30
+
+class CloneRequest(BaseModel):
+    text: str
+    speaker_id: Optional[str] = None
+    rvc_model: Optional[str] = None
+    speed: Optional[float] = 1.0
 
 # Progress tracking
 training_progress = {
@@ -203,6 +252,50 @@ async def get_status():
 async def health():
     return {"status": "online", "gpu": torch.cuda.is_available()}
 
+
+@app.post("/clone")
+async def clone_voice(request: CloneRequest):
+    """Endpoint untuk Generasi Suara + RVC (Opsi B)"""
+    try:
+        # 1. Persiapkan Speaker Reference
+        local_speaker_path = "/workspace/default_speaker.wav"
+        if request.speaker_id and request.speaker_id != "using_cached_speaker":
+            # Jika speaker_id adalah path S3 (biasanya mengandung .wav)
+            if "/" in request.speaker_id or request.speaker_id.endswith(".wav"):
+                # Kita gunakan folder temp agar tidak bentrok
+                local_speaker_path = f"/tmp/{os.path.basename(request.speaker_id)}"
+                if not os.path.exists(local_speaker_path):
+                    print(f"📥 [CLONE] Downloading speaker reference: {request.speaker_id}")
+                    s3.s3.download_file(s3.bucket, request.speaker_id, local_speaker_path)
+            else:
+                # Logika mapping id ke path jika perlu
+                pass
+
+        # 1.5 Download RVC Model (Jika diberikan path S3)
+        local_rvc_path = None
+        if request.rvc_model:
+            # Jika rvc_model adalah path S3
+            if "/" in request.rvc_model:
+                local_rvc_path = f"/workspace/models/rvc/{os.path.basename(request.rvc_model)}"
+                if not os.path.exists(local_rvc_path):
+                    print(f"📥 [RVC] Downloading model from S3: {request.rvc_model}")
+                    os.makedirs(os.path.dirname(local_rvc_path), exist_ok=True)
+                    s3.s3.download_file(s3.bucket, request.rvc_model, local_rvc_path)
+            else:
+                # Asumsi sudah ada di folder workspace/models/rvc/
+                local_rvc_path = f"/workspace/models/rvc/{request.rvc_model}"
+
+        # 4. Return as Streaming Response
+        from fastapi.responses import Response
+        byte_io = io.BytesIO()
+        sf.write(byte_io, final_wav, 24000, format='WAV')
+        byte_io.seek(0)
+        
+        return Response(content=byte_io.read(), media_type="audio/wav")
+
+    except Exception as e:
+        print(f"❌ [CLONE] Error: {str(e)}")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
