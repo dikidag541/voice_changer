@@ -43,10 +43,11 @@ class RunpodService
      * Create a new GPU Pod (RTX 4090) otomatis via GraphQL
      * Pindah ke GraphQL karena REST API v1 sering bermasalah dengan schema
      */
-    public function createPod($name = 'voice_changer_A40')
+    public function createPod($name = 'voice_changer_gpu')
     {
         $apiKey = env('RUNPOD_API_KEY');
         $gpus = [
+            "NVIDIA GeForce RTX 4090",
             "NVIDIA RTX A4000",
             "NVIDIA A5000",
             "NVIDIA RTX 3090",
