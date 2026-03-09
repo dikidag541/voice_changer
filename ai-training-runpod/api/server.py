@@ -260,30 +260,33 @@ async def clone_voice(request: CloneRequest):
         # 1. Persiapkan Speaker Reference
         local_speaker_path = "/workspace/default_speaker.wav"
         if request.speaker_id and request.speaker_id != "using_cached_speaker":
-            # Jika speaker_id adalah path S3 (biasanya mengandung .wav)
-            if "/" in request.speaker_id or request.speaker_id.endswith(".wav"):
-                # Kita gunakan folder temp agar tidak bentrok
+            # Jika speaker_id adalah path S3 (biasanya mengandung .wav/@reference)
+            if "/" in str(request.speaker_id) or str(request.speaker_id).endswith(".wav"):
                 local_speaker_path = f"/tmp/{os.path.basename(request.speaker_id)}"
                 if not os.path.exists(local_speaker_path):
-                    print(f"📥 [CLONE] Downloading speaker reference: {request.speaker_id}")
-                    s3.s3.download_file(s3.bucket, request.speaker_id, local_speaker_path)
-            else:
-                # Logika mapping id ke path jika perlu
-                pass
+                    print(f"📥 [CLONE] Downloading speaker: {request.speaker_id}")
+                    try:
+                        s3.s3.download_file(s3.bucket, request.speaker_id, local_speaker_path)
+                    except Exception as e:
+                        print(f"⚠️ Gagal download speaker, pake fallback: {e}")
+                        local_speaker_path = "/workspace/default_speaker.wav"
 
         # 1.5 Download RVC Model (Jika diberikan path S3)
         local_rvc_path = None
         if request.rvc_model:
-            # Jika rvc_model adalah path S3
-            if "/" in request.rvc_model:
+            if "/" in str(request.rvc_model):
                 local_rvc_path = f"/workspace/models/rvc/{os.path.basename(request.rvc_model)}"
                 if not os.path.exists(local_rvc_path):
-                    print(f"📥 [RVC] Downloading model from S3: {request.rvc_model}")
+                    print(f"📥 [RVC] Downloading model: {request.rvc_model}")
                     os.makedirs(os.path.dirname(local_rvc_path), exist_ok=True)
-                    s3.s3.download_file(s3.bucket, request.rvc_model, local_rvc_path)
+                    try:
+                        s3.s3.download_file(s3.bucket, request.rvc_model, local_rvc_path)
+                    except Exception as e:
+                        print(f"⚠️ Gagal download RVC: {e}")
+                        local_rvc_path = None
             else:
-                # Asumsi sudah ada di folder workspace/models/rvc/
                 local_rvc_path = f"/workspace/models/rvc/{request.rvc_model}"
+                if not os.path.exists(local_rvc_path): local_rvc_path = None
 
         # 4. Return as Streaming Response
         from fastapi.responses import Response
