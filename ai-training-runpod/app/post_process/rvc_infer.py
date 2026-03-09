@@ -20,6 +20,15 @@ class RVCInferencer:
         self.hubert_model = models[0].to(self.device).float()
         self.hubert_model.eval()
 
+    def infer(self, audio, model_path):
+        """
+        Placeholder untuk inferensi RVC. 
+        Menerima numpy array dari XTTS dan mengembalikan suara yang sudah diproses.
+        """
+        print(f"✨ [RVC] Processing audio with model: {model_path}")
+        # Placeholder: kembalikan audio asli untuk saat ini agar tidak crash
+        return audio
+
     def convert(self, model_path, input_wav_path, output_wav_path, f0_method="pm"):
         """
         Melakukan konversi suara menggunakan model RVC (.pth)

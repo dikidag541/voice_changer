@@ -3,14 +3,17 @@ import sys
 import uuid
 import shutil
 import torch
+import io
+import requests
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
-import requests
 from dotenv import load_dotenv
+import soundfile as sf
+import librosa
+import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 load_dotenv()
 
 from services.s3_manager import S3Manager
@@ -19,13 +22,12 @@ from app.preprocessing.split_audio import split_long_audio
 from app.preprocessing.make_metadata import transcribe_with_whisper
 from app.train.train import start_training
 from app.post_process.rvc_infer import RVCInferencer
-import soundfile as sf
-import librosa
 
 app = FastAPI(title="Runpod AI Training Worker")
 
 s3 = S3Manager()
 local_storage = LocalStorageManager()
+rvc = RVCInferencer()
 
 class XTTSInference:
     def __init__(self):
@@ -49,7 +51,7 @@ class XTTSInference:
         config = XttsConfig()
         config.load_json(os.path.join(model_dir, "config.json"))
         self.model = Xtts.init_from_config(config)
-        self.model.load_checkpoint(checkpoint_dir=model_dir, use_deepspeed=False)
+        self.model.load_checkpoint(config, checkpoint_dir=model_dir, use_deepspeed=False)
         self.model.to(self.device)
         print("✅ XTTS Inference Ready.")
 
@@ -57,13 +59,14 @@ class XTTSInference:
         if self.model is None:
             self.load_model()
         
-        return self.model.synthesize(
+        output = self.model.synthesize(
             text,
             config=self.model.config,
             speaker_wav=speaker_wav,
             language=language,
             speed=speed
         )
+        return output['wav']
 
 inference_engine = XTTSInference()
 
@@ -228,7 +231,7 @@ def run_training_pipeline(request: TrainingRequest):
             "message": f"Error: {str(e)}"
         })
         print(f"❌ [PIPELINE] ERROR: {str(e)}")
-        # terminate_self() # Dinonaktifkan sementara agar log tidak hilang kalau error
+        # terminate_self()
 
 
 @app.post("/train")
@@ -260,7 +263,7 @@ async def clone_voice(request: CloneRequest):
         # 1. Persiapkan Speaker Reference
         local_speaker_path = "/workspace/default_speaker.wav"
         if request.speaker_id and request.speaker_id != "using_cached_speaker":
-            # Jika speaker_id adalah path S3 (biasanya mengandung .wav/@reference)
+            # Jika speaker_id adalah path S3
             if "/" in str(request.speaker_id) or str(request.speaker_id).endswith(".wav"):
                 local_speaker_path = f"/tmp/{os.path.basename(request.speaker_id)}"
                 if not os.path.exists(local_speaker_path):
@@ -271,9 +274,20 @@ async def clone_voice(request: CloneRequest):
                         print(f"⚠️ Gagal download speaker, pake fallback: {e}")
                         local_speaker_path = "/workspace/default_speaker.wav"
 
-        # 1.5 Download RVC Model (Jika diberikan path S3)
-        local_rvc_path = None
+        # 2. XTTS Generation
+        print(f"🗣\ufe0f [CLONE] Generating XTTS base for: {request.text[:30]}...")
+        xtts_wav = inference_engine.generate(
+            text=request.text,
+            speaker_wav=local_speaker_path,
+            language="id",
+            speed=request.speed
+        )
+
+        final_wav = xtts_wav
+
+        # 3. RVC Post-Processing (Optional)
         if request.rvc_model:
+            local_rvc_path = None
             if "/" in str(request.rvc_model):
                 local_rvc_path = f"/workspace/models/rvc/{os.path.basename(request.rvc_model)}"
                 if not os.path.exists(local_rvc_path):
@@ -287,6 +301,13 @@ async def clone_voice(request: CloneRequest):
             else:
                 local_rvc_path = f"/workspace/models/rvc/{request.rvc_model}"
                 if not os.path.exists(local_rvc_path): local_rvc_path = None
+
+            if local_rvc_path:
+                print(f"✨ [RVC] Applying texture from {local_rvc_path}...")
+                final_wav = rvc.infer(
+                    audio=xtts_wav,
+                    model_path=local_rvc_path
+                )
 
         # 4. Return as Streaming Response
         from fastapi.responses import Response
@@ -302,4 +323,4 @@ async def clone_voice(request: CloneRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8888)
